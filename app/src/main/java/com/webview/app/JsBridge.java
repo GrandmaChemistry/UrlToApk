@@ -31,6 +31,7 @@ import android.webkit.JavascriptInterface;
 import android.webkit.WebView;
 import android.widget.Toast;
 
+import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
 
@@ -406,10 +407,20 @@ public class JsBridge {
     }
 
     @JavascriptInterface
+    public boolean isBackButtonEnabled() {
+        return backButtonEnabled;
+    }
+
+    @JavascriptInterface
     public void setTitle(String title) {
+        // Note: This app uses NoActionBar theme, so this method
+        // is a no-op. Document title can be handled in WebView JS.
         activity.runOnUiThread(() -> {
-            if (activity.getActionBar() != null) {
-                activity.getActionBar().setTitle(title);
+            if (activity instanceof AppCompatActivity) {
+                AppCompatActivity appCompatActivity = (AppCompatActivity) activity;
+                if (appCompatActivity.getSupportActionBar() != null) {
+                    appCompatActivity.getSupportActionBar().setTitle(title);
+                }
             }
         });
     }
@@ -437,9 +448,5 @@ public class JsBridge {
     @JavascriptInterface
     public void getContacts() {
         Toast.makeText(activity, "获取联系人需要申请权限", Toast.LENGTH_SHORT).show();
-    }
-
-    public boolean isBackButtonEnabled() {
-        return backButtonEnabled;
     }
 }

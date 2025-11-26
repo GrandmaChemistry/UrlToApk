@@ -48,8 +48,14 @@ jobs:
       - name: Process custom icon
         if: ${{ github.event.inputs.app_icon != '' }}
         run: |
-          # Decode base64 icon and save to multiple mipmap directories
+          # Decode base64 icon and save to temp file
           echo "${{ github.event.inputs.app_icon }}" | base64 -d > /tmp/app_icon.png
+          
+          # Validate PNG file format
+          if ! file /tmp/app_icon.png | grep -q "PNG image"; then
+            echo "Error: Invalid PNG image format"
+            exit 1
+          fi
           
           # Install ImageMagick for image resizing
           sudo apt-get update && sudo apt-get install -y imagemagick
@@ -87,15 +93,20 @@ jobs:
           BUILD_TOOLS_VERSION: "34.0.0"
         continue-on-error: true
 
-      - name: Rename APK
+      - name: Check signing status and rename APK
+        id: apk_status
         run: |
           # Sanitize app name for filename
           SAFE_NAME=$(echo "${{ github.event.inputs.app_name }}" | tr ' ' '_' | tr -cd '[:alnum:]_-')
           
           if [ -f "app/build/outputs/apk/release/app-release-signed.apk" ]; then
             mv app/build/outputs/apk/release/app-release-signed.apk "app/build/outputs/apk/release/${SAFE_NAME}.apk"
+            echo "signed=true" >> $GITHUB_OUTPUT
+            echo "APK is signed"
           else
-            mv app/build/outputs/apk/release/app-release-unsigned.apk "app/build/outputs/apk/release/${SAFE_NAME}.apk"
+            mv app/build/outputs/apk/release/app-release-unsigned.apk "app/build/outputs/apk/release/${SAFE_NAME}-unsigned.apk"
+            echo "signed=false" >> $GITHUB_OUTPUT
+            echo "::warning::APK is unsigned. Configure SIGNING_KEY, KEY_ALIAS, KEY_STORE_PASSWORD and KEY_PASSWORD secrets for signed APK."
           fi
 
       - name: Upload APK
@@ -117,6 +128,7 @@ jobs:
             - **包名**: ${{ github.event.inputs.package_name }}
             - **URL**: ${{ github.event.inputs.app_url }}
             - **主题色**: ${{ github.event.inputs.theme_color }}
+            - **签名状态**: ${{ steps.apk_status.outputs.signed == 'true' && '已签名' || '未签名' }}
             
             ## 功能特性
             - WebView 加载指定URL
