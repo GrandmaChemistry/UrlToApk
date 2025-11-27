@@ -7,9 +7,10 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.Color;
+import android.location.Location;
 import android.net.Uri;
-import android.os.Build;
 import android.os.Bundle;
+import android.os.Looper;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.Window;
@@ -28,18 +29,33 @@ import android.widget.Toast;
 
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
 
+import com.google.android.gms.location.FusedLocationProviderClient;
+import com.google.android.gms.location.LocationCallback;
+import com.google.android.gms.location.LocationRequest;
+import com.google.android.gms.location.LocationResult;
+import com.google.android.gms.location.LocationServices;
+import com.google.android.gms.location.Priority;
+
+import org.json.JSONObject;
+
 public class MainActivity extends AppCompatActivity {
+
+    private static final int LOCATION_PERMISSION_REQUEST = 1001;
+    private static final long LOCATION_UPDATE_INTERVAL = 10000; // 10 seconds
+    private static final long LOCATION_MIN_UPDATE_INTERVAL = 5000; // 5 seconds
 
     private WebView webView;
     private ProgressBar progressBar;
     private ValueCallback<Uri[]> filePathCallback;
     private JsBridge jsBridge;
+    private FusedLocationProviderClient fusedLocationClient;
 
     private final ActivityResultLauncher<Intent> fileChooserLauncher = registerForActivityResult(
             new ActivityResultContracts.StartActivityForResult(),
@@ -58,12 +74,49 @@ public class MainActivity extends AppCompatActivity {
             }
     );
 
+    private final ActivityResultLauncher<Intent> qrCodeScannerLauncher = registerForActivityResult(
+            new ActivityResultContracts.StartActivityForResult(),
+            result -> {
+                String scanResult = null;
+                String status = "cancelled";
+                
+                if (result.getData() != null) {
+                    scanResult = result.getData().getStringExtra(ScannerActivity.EXTRA_SCAN_RESULT);
+                }
+                
+                if (result.getResultCode() == ScannerActivity.RESULT_SUCCESS && scanResult != null) {
+                    status = "success";
+                } else if (result.getResultCode() == ScannerActivity.RESULT_ERROR) {
+                    status = "error";
+                    if ("PERMISSION_DENIED".equals(scanResult)) {
+                        status = "permission_denied";
+                    }
+                }
+                
+                final String finalStatus = status;
+                final String finalResult = scanResult;
+                
+                runOnUiThread(() -> {
+                    try {
+                        JSONObject response = new JSONObject();
+                        response.put("status", finalStatus);
+                        response.put("result", finalResult != null ? finalResult : "");
+                        executeJsCallback("_qrCallback", response.toString());
+                    } catch (Exception e) {
+                        executeJsCallback("_qrCallback", "{\"status\":\"error\",\"result\":\"\"}");
+                    }
+                });
+            }
+    );
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         
         setThemeColor();
         setContentView(R.layout.activity_main);
+
+        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
 
         initViews();
         initWebView();
@@ -273,6 +326,128 @@ public class MainActivity extends AppCompatActivity {
     private void loadUrl() {
         String url = BuildConfig.APP_URL;
         webView.loadUrl(url);
+    }
+
+    /**
+     * Start QR code scanner activity
+     */
+    public void startQRCodeScanner() {
+        Intent intent = new Intent(this, ScannerActivity.class);
+        qrCodeScannerLauncher.launch(intent);
+    }
+
+    /**
+     * Request current location with permission handling
+     */
+    public void requestLocation() {
+        if (hasLocationPermission()) {
+            getLocation();
+        } else {
+            ActivityCompat.requestPermissions(this,
+                    new String[]{
+                            Manifest.permission.ACCESS_FINE_LOCATION,
+                            Manifest.permission.ACCESS_COARSE_LOCATION
+                    },
+                    LOCATION_PERMISSION_REQUEST);
+        }
+    }
+
+    private boolean hasLocationPermission() {
+        return ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
+                == PackageManager.PERMISSION_GRANTED
+                || ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION)
+                == PackageManager.PERMISSION_GRANTED;
+    }
+
+    @SuppressLint("MissingPermission")
+    private void getLocation() {
+        LocationRequest locationRequest = new LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, LOCATION_UPDATE_INTERVAL)
+                .setWaitForAccurateLocation(false)
+                .setMinUpdateIntervalMillis(LOCATION_MIN_UPDATE_INTERVAL)
+                .setMaxUpdates(1)
+                .build();
+
+        LocationCallback locationCallback = new LocationCallback() {
+            @Override
+            public void onLocationResult(@NonNull LocationResult locationResult) {
+                Location location = locationResult.getLastLocation();
+                if (location != null) {
+                    sendLocationToJs(location, "success");
+                } else {
+                    sendLocationErrorToJs("error", "无法获取位置信息");
+                }
+                fusedLocationClient.removeLocationUpdates(this);
+            }
+        };
+
+        // First try to get last known location
+        fusedLocationClient.getLastLocation()
+                .addOnSuccessListener(this, location -> {
+                    if (location != null) {
+                        sendLocationToJs(location, "success");
+                    } else {
+                        // Request fresh location
+                        fusedLocationClient.requestLocationUpdates(locationRequest, locationCallback, Looper.getMainLooper());
+                    }
+                })
+                .addOnFailureListener(e -> {
+                    // Request fresh location on failure
+                    fusedLocationClient.requestLocationUpdates(locationRequest, locationCallback, Looper.getMainLooper());
+                });
+    }
+
+    private void sendLocationToJs(Location location, String status) {
+        runOnUiThread(() -> {
+            try {
+                JSONObject response = new JSONObject();
+                response.put("status", status);
+                response.put("latitude", location.getLatitude());
+                response.put("longitude", location.getLongitude());
+                response.put("accuracy", location.getAccuracy());
+                response.put("altitude", location.getAltitude());
+                response.put("speed", location.getSpeed());
+                response.put("timestamp", location.getTime());
+                executeJsCallback("_locationCallback", response.toString());
+            } catch (Exception e) {
+                sendLocationErrorToJs("error", e.getMessage());
+            }
+        });
+    }
+
+    private void sendLocationErrorToJs(String status, String message) {
+        runOnUiThread(() -> {
+            try {
+                JSONObject response = new JSONObject();
+                response.put("status", status);
+                response.put("message", message != null ? message : "Unknown error");
+                executeJsCallback("_locationCallback", response.toString());
+            } catch (Exception e) {
+                executeJsCallback("_locationCallback", "{\"status\":\"error\",\"message\":\"Unknown error\"}");
+            }
+        });
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions,
+                                           @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        
+        if (requestCode == LOCATION_PERMISSION_REQUEST) {
+            // Check if either location permission was granted
+            boolean permissionGranted = false;
+            for (int result : grantResults) {
+                if (result == PackageManager.PERMISSION_GRANTED) {
+                    permissionGranted = true;
+                    break;
+                }
+            }
+            
+            if (permissionGranted) {
+                getLocation();
+            } else {
+                sendLocationErrorToJs("permission_denied", "位置权限被拒绝");
+            }
+        }
     }
 
     @Override
