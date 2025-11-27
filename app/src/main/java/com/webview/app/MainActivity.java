@@ -164,7 +164,6 @@ public class MainActivity extends AppCompatActivity {
         
         // Cache settings
         webSettings.setCacheMode(WebSettings.LOAD_DEFAULT);
-        webSettings.setAppCacheEnabled(true);
         
         // Media settings
         webSettings.setMediaPlaybackRequiresUserGesture(false);

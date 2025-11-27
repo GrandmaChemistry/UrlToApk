@@ -22,8 +22,8 @@ on:
         required: false
         type: string
         default: '#2196F3'
-      app_icon:
-        description: '应用图标 (Base64编码的PNG图片，可选)'
+      app_icon_url:
+        description: '应用图标URL (公开可访问的PNG图片地址，可选)'
         required: false
         type: string
 
@@ -48,10 +48,10 @@ jobs:
         run: chmod +x gradlew
 
       - name: Process custom icon
-        if: ${{ github.event.inputs.app_icon != '' }}
+        if: ${{ github.event.inputs.app_icon_url != '' }}
         run: |
-          # Decode base64 icon and save to temp file
-          echo "${{ github.event.inputs.app_icon }}" | base64 -d > /tmp/app_icon.png
+          # Download icon from URL with security options
+          curl -L --fail --max-time 30 --max-filesize 10485760 -o /tmp/app_icon.png "${{ github.event.inputs.app_icon_url }}"
           
           # Validate PNG file format
           if ! file /tmp/app_icon.png | grep -q "PNG image"; then
