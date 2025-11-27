@@ -124,6 +124,35 @@ NativeBridge.vibrate(200); // 震动200毫秒
 
 // 播放提示音
 NativeBridge.playSound('beep'); // beep/success/error
+
+// 获取当前位置
+NativeBridge.getCurrentLocation(function(result) {
+  if (result.status === 'success') {
+    console.log('纬度:', result.latitude);
+    console.log('经度:', result.longitude);
+    console.log('精度:', result.accuracy);
+    console.log('海拔:', result.altitude);
+    console.log('速度:', result.speed);
+    console.log('时间戳:', result.timestamp);
+  } else if (result.status === 'permission_denied') {
+    console.log('用户拒绝了位置权限');
+  } else {
+    console.log('获取位置失败:', result.message);
+  }
+});
+
+// 扫描二维码
+NativeBridge.scanQRCode(function(result) {
+  if (result.status === 'success') {
+    console.log('扫描结果:', result.result);
+  } else if (result.status === 'cancelled') {
+    console.log('用户取消了扫描');
+  } else if (result.status === 'permission_denied') {
+    console.log('用户拒绝了相机权限');
+  } else {
+    console.log('扫描失败');
+  }
+});
 ```
 
 #### 分享与通讯

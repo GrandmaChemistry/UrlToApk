@@ -427,12 +427,20 @@ public class JsBridge {
 
     @JavascriptInterface
     public void scanQRCode() {
-        Toast.makeText(activity, "扫码功能需要集成第三方库", Toast.LENGTH_SHORT).show();
+        activity.runOnUiThread(() -> {
+            if (activity instanceof MainActivity) {
+                ((MainActivity) activity).startQRCodeScanner();
+            }
+        });
     }
 
     @JavascriptInterface
     public void getCurrentLocation() {
-        Toast.makeText(activity, "定位功能需要申请位置权限", Toast.LENGTH_SHORT).show();
+        activity.runOnUiThread(() -> {
+            if (activity instanceof MainActivity) {
+                ((MainActivity) activity).requestLocation();
+            }
+        });
     }
 
     @JavascriptInterface
