@@ -1,0 +1,143 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      app_url:
+        description: '网站URL (例如: https://www.example.com)'
+        required: true
+        type: string
+      app_name:
+        description: '应用名称'
+        required: true
+        type: string
+        default: 'My App'
+      package_name:
+        description: '应用包名 (例如: com.example.app)'
+        required: true
+        type: string
+        default: 'com.webview.app'
+      theme_color:
+        description: '主题色 (例如: #2196F3)'
+        required: false
+        type: string
+        default: '#2196F3'
+      app_icon:
+        description: '应用图标 (Base64编码的PNG图片，可选)'
+        required: false
+        type: string
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Process custom icon
+        if: ${{ github.event.inputs.app_icon != '' }}
+        run: |
+          # Decode base64 icon and save to temp file
+          echo "${{ github.event.inputs.app_icon }}" | base64 -d > /tmp/app_icon.png
+          
+          # Validate PNG file format
+          if ! file /tmp/app_icon.png | grep -q "PNG image"; then
+            echo "Error: Invalid PNG image format"
+            exit 1
+          fi
+          
+          # Install ImageMagick for image resizing
+          sudo apt-get update && sudo apt-get install -y imagemagick
+          
+          # Resize icons for different densities
+          convert /tmp/app_icon.png -resize 48x48 app/src/main/res/mipmap-mdpi/ic_launcher.png
+          convert /tmp/app_icon.png -resize 48x48 app/src/main/res/mipmap-mdpi/ic_launcher_round.png
+          convert /tmp/app_icon.png -resize 72x72 app/src/main/res/mipmap-hdpi/ic_launcher.png
+          convert /tmp/app_icon.png -resize 72x72 app/src/main/res/mipmap-hdpi/ic_launcher_round.png
+          convert /tmp/app_icon.png -resize 96x96 app/src/main/res/mipmap-xhdpi/ic_launcher.png
+          convert /tmp/app_icon.png -resize 96x96 app/src/main/res/mipmap-xhdpi/ic_launcher_round.png
+          convert /tmp/app_icon.png -resize 144x144 app/src/main/res/mipmap-xxhdpi/ic_launcher.png
+          convert /tmp/app_icon.png -resize 144x144 app/src/main/res/mipmap-xxhdpi/ic_launcher_round.png
+          convert /tmp/app_icon.png -resize 192x192 app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
+          convert /tmp/app_icon.png -resize 192x192 app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png
+
+      - name: Build Release APK
+        run: |
+          ./gradlew assembleRelease \
+            -PAPP_URL="${{ github.event.inputs.app_url }}" \
+            -PAPP_NAME="${{ github.event.inputs.app_name }}" \
+            -PPACKAGE_NAME="${{ github.event.inputs.package_name }}" \
+            -PTHEME_COLOR="${{ github.event.inputs.theme_color }}"
+
+      - name: Sign APK
+        uses: r0adkll/sign-android-release@v1
+        id: sign_app
+        with:
+          releaseDirectory: app/build/outputs/apk/release
+          signingKeyBase64: ${{ secrets.SIGNING_KEY }}
+          alias: ${{ secrets.KEY_ALIAS }}
+          keyStorePassword: ${{ secrets.KEY_STORE_PASSWORD }}
+          keyPassword: ${{ secrets.KEY_PASSWORD }}
+        env:
+          BUILD_TOOLS_VERSION: "34.0.0"
+        continue-on-error: true
+
+      - name: Check signing status and rename APK
+        id: apk_status
+        run: |
+          # Sanitize app name for filename
+          SAFE_NAME=$(echo "${{ github.event.inputs.app_name }}" | tr ' ' '_' | tr -cd '[:alnum:]_-')
+          
+          if [ -f "app/build/outputs/apk/release/app-release-signed.apk" ]; then
+            mv app/build/outputs/apk/release/app-release-signed.apk "app/build/outputs/apk/release/${SAFE_NAME}.apk"
+            echo "signed=true" >> $GITHUB_OUTPUT
+            echo "APK is signed"
+          else
+            mv app/build/outputs/apk/release/app-release-unsigned.apk "app/build/outputs/apk/release/${SAFE_NAME}-unsigned.apk"
+            echo "signed=false" >> $GITHUB_OUTPUT
+            echo "::warning::APK is unsigned. Configure SIGNING_KEY, KEY_ALIAS, KEY_STORE_PASSWORD and KEY_PASSWORD secrets for signed APK."
+          fi
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ github.event.inputs.app_name }}-apk
+          path: app/build/outputs/apk/release/*.apk
+          retention-days: 30
+
+      - name: Create Release
+        if: success()
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ github.run_number }}
+          name: "${{ github.event.inputs.app_name }} - Build ${{ github.run_number }}"
+          body: |
+            ## 应用信息
+            - **应用名称**: ${{ github.event.inputs.app_name }}
+            - **包名**: ${{ github.event.inputs.package_name }}
+            - **URL**: ${{ github.event.inputs.app_url }}
+            - **主题色**: ${{ github.event.inputs.theme_color }}
+            - **签名状态**: ${{ steps.apk_status.outputs.signed == 'true' && '已签名' || '未签名' }}
+            
+            ## 功能特性
+            - WebView 加载指定URL
+            - 返回键二次确认退出
+            - JavaScript Bridge 原生功能调用
+          files: app/build/outputs/apk/release/*.apk
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
