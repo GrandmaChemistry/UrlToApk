@@ -48,6 +48,8 @@ import org.json.JSONObject;
 public class MainActivity extends AppCompatActivity {
 
     private static final int LOCATION_PERMISSION_REQUEST = 1001;
+    private static final long LOCATION_UPDATE_INTERVAL = 10000; // 10 seconds
+    private static final long LOCATION_MIN_UPDATE_INTERVAL = 5000; // 5 seconds
 
     private WebView webView;
     private ProgressBar progressBar;
@@ -359,9 +361,9 @@ public class MainActivity extends AppCompatActivity {
 
     @SuppressLint("MissingPermission")
     private void getLocation() {
-        LocationRequest locationRequest = new LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 10000)
+        LocationRequest locationRequest = new LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, LOCATION_UPDATE_INTERVAL)
                 .setWaitForAccurateLocation(false)
-                .setMinUpdateIntervalMillis(5000)
+                .setMinUpdateIntervalMillis(LOCATION_MIN_UPDATE_INTERVAL)
                 .setMaxUpdates(1)
                 .build();
 
@@ -431,7 +433,16 @@ public class MainActivity extends AppCompatActivity {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         
         if (requestCode == LOCATION_PERMISSION_REQUEST) {
-            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+            // Check if either location permission was granted
+            boolean permissionGranted = false;
+            for (int result : grantResults) {
+                if (result == PackageManager.PERMISSION_GRANTED) {
+                    permissionGranted = true;
+                    break;
+                }
+            }
+            
+            if (permissionGranted) {
                 getLocation();
             } else {
                 sendLocationErrorToJs("permission_denied", "位置权限被拒绝");
