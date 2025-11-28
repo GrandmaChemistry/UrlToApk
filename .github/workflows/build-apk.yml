@@ -111,7 +111,9 @@ jobs:
           else
             echo "Release signing not available, using debug key..."
             
-            # Generate a debug keystore (using standard Android debug keystore settings)
+            # Generate a debug keystore
+            # Note: Using standard Android debug keystore credentials ('android') is intentional
+            # for debug signing compatibility. This should never be used for production releases.
             keytool -genkeypair -v \
               -keystore /tmp/debug.keystore \
               -storepass android \
@@ -140,14 +142,16 @@ jobs:
               "app/build/outputs/apk/release/app-release-aligned.apk"
             
             # Verify the signature
-            ${ANDROID_SDK_ROOT}/build-tools/${BUILD_TOOLS_VERSION}/apksigner verify "app/build/outputs/apk/release/${SAFE_NAME}.apk"
+            ${ANDROID_SDK_ROOT}/build-tools/${BUILD_TOOLS_VERSION}/apksigner verify "app/build/outputs/apk/release/${SAFE_NAME}.apk" \
+              || { echo "APK signature verification failed"; exit 1; }
             
             echo "signed=debug" >> $GITHUB_OUTPUT
             echo "::notice::APK is signed with debug key. For production, configure SIGNING_KEY, KEY_ALIAS, KEY_STORE_PASSWORD and KEY_PASSWORD secrets."
             
-            # Clean up intermediate files
+            # Clean up intermediate and temporary files
             rm -f "app/build/outputs/apk/release/app-release-unsigned.apk"
             rm -f "app/build/outputs/apk/release/app-release-aligned.apk"
+            rm -f "/tmp/debug.keystore"
           fi
 
       - name: Upload APK
