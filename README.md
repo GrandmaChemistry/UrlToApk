@@ -18,9 +18,9 @@
 
 点击右上角的 Fork 按钮，将本仓库 Fork 到您的 GitHub 账号下。
 
-### 2. 配置签名密钥（可选）
+### 2. 配置签名密钥（可选，推荐）
 
-如果需要对 APK 进行签名，请在仓库的 Settings > Secrets and variables > Actions 中添加以下密钥：
+如果需要使用正式签名对 APK 进行签名，请在仓库的 Settings > Secrets and variables > Actions 中添加以下密钥：
 
 - `SIGNING_KEY` - Base64 编码的签名密钥文件
 - `KEY_ALIAS` - 密钥别名
@@ -35,6 +35,8 @@ keytool -genkey -v -keystore release-key.jks -keyalg RSA -keysize 2048 -validity
 # 转换为 Base64
 base64 -w 0 release-key.jks > signing_key.txt
 ```
+
+> **注意**: 如果未配置签名密钥，APK 将自动使用调试签名，可以正常安装使用，但不建议用于正式发布。
 
 ### 3. 运行 GitHub Action
 
@@ -215,9 +217,17 @@ NativeBridge.enableBackButton(true);
 ## 注意事项
 
 1. 首次运行需要下载 Gradle 和依赖，可能需要几分钟时间
-2. 如果没有配置签名密钥，生成的是未签名的 APK
+2. 如果没有配置签名密钥，APK 将自动使用调试签名，可以正常安装使用
 3. 应用图标需要是 PNG 格式，建议尺寸 512x512 像素
 4. 包名必须是有效的 Java 包名格式（例如：com.company.app）
+
+## 安装说明
+
+生成的 APK 已经过签名（调试签名或正式签名），可以直接安装到 Android 设备上：
+
+1. 将 APK 文件传输到 Android 设备
+2. 在设备上打开 APK 文件进行安装
+3. 如果提示"未知来源"，请在设置中允许安装未知来源应用
 
 ## 许可证
 
