@@ -32,6 +32,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      BUILD_TOOLS_VERSION: "34.0.0"
     
     steps:
       - name: Checkout repository
@@ -82,7 +84,7 @@ jobs:
             -PPACKAGE_NAME="${{ github.event.inputs.package_name }}" \
             -PTHEME_COLOR="${{ github.event.inputs.theme_color }}"
 
-      - name: Sign APK
+      - name: Sign APK with release key
         uses: r0adkll/sign-android-release@v1
         id: sign_app
         with:
@@ -95,20 +97,61 @@ jobs:
           BUILD_TOOLS_VERSION: "34.0.0"
         continue-on-error: true
 
-      - name: Check signing status and rename APK
-        id: apk_status
+      - name: Sign APK with debug key (fallback)
+        id: sign_debug
         run: |
           # Sanitize app name for filename
           SAFE_NAME=$(echo "${{ github.event.inputs.app_name }}" | tr ' ' '_' | tr -cd '[:alnum:]_-')
           
+          # Check if release signing was successful
           if [ -f "app/build/outputs/apk/release/app-release-signed.apk" ]; then
             mv app/build/outputs/apk/release/app-release-signed.apk "app/build/outputs/apk/release/${SAFE_NAME}.apk"
-            echo "signed=true" >> $GITHUB_OUTPUT
-            echo "APK is signed"
+            echo "signed=release" >> $GITHUB_OUTPUT
+            echo "APK is signed with release key"
           else
-            mv app/build/outputs/apk/release/app-release-unsigned.apk "app/build/outputs/apk/release/${SAFE_NAME}-unsigned.apk"
-            echo "signed=false" >> $GITHUB_OUTPUT
-            echo "::warning::APK is unsigned. Configure SIGNING_KEY, KEY_ALIAS, KEY_STORE_PASSWORD and KEY_PASSWORD secrets for signed APK."
+            echo "Release signing not available, using debug key..."
+            
+            # Generate a debug keystore
+            # Note: Using standard Android debug keystore credentials ('android') is intentional
+            # for debug signing compatibility. This should never be used for production releases.
+            keytool -genkeypair -v \
+              -keystore /tmp/debug.keystore \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
+            
+            # Find the unsigned APK
+            UNSIGNED_APK="app/build/outputs/apk/release/app-release-unsigned.apk"
+            
+            # Align the APK
+            ${ANDROID_SDK_ROOT}/build-tools/${BUILD_TOOLS_VERSION}/zipalign -v -p 4 \
+              "$UNSIGNED_APK" \
+              "app/build/outputs/apk/release/app-release-aligned.apk"
+            
+            # Sign the APK with debug key
+            ${ANDROID_SDK_ROOT}/build-tools/${BUILD_TOOLS_VERSION}/apksigner sign \
+              --ks /tmp/debug.keystore \
+              --ks-key-alias androiddebugkey \
+              --ks-pass pass:android \
+              --key-pass pass:android \
+              --out "app/build/outputs/apk/release/${SAFE_NAME}.apk" \
+              "app/build/outputs/apk/release/app-release-aligned.apk"
+            
+            # Verify the signature
+            ${ANDROID_SDK_ROOT}/build-tools/${BUILD_TOOLS_VERSION}/apksigner verify "app/build/outputs/apk/release/${SAFE_NAME}.apk" \
+              || { echo "APK signature verification failed"; exit 1; }
+            
+            echo "signed=debug" >> $GITHUB_OUTPUT
+            echo "::notice::APK is signed with debug key. For production, configure SIGNING_KEY, KEY_ALIAS, KEY_STORE_PASSWORD and KEY_PASSWORD secrets."
+            
+            # Clean up intermediate and temporary files
+            rm -f "app/build/outputs/apk/release/app-release-unsigned.apk"
+            rm -f "app/build/outputs/apk/release/app-release-aligned.apk"
+            rm -f "/tmp/debug.keystore"
           fi
 
       - name: Upload APK
@@ -130,12 +173,15 @@ jobs:
             - **包名**: ${{ github.event.inputs.package_name }}
             - **URL**: ${{ github.event.inputs.app_url }}
             - **主题色**: ${{ github.event.inputs.theme_color }}
-            - **签名状态**: ${{ steps.apk_status.outputs.signed == 'true' && '已签名' || '未签名' }}
+            - **签名状态**: ${{ steps.sign_debug.outputs.signed == 'release' && '正式签名' || '调试签名' }}
             
             ## 功能特性
             - WebView 加载指定URL
             - 返回键二次确认退出
             - JavaScript Bridge 原生功能调用
+            
+            ## 安装说明
+            ${{ steps.sign_debug.outputs.signed == 'debug' && '> ⚠️ 此APK使用调试签名，可以正常安装使用。如需正式签名，请配置仓库的签名密钥。' || '✅ 此APK已使用正式签名。' }}
           files: app/build/outputs/apk/release/*.apk
           draft: false
           prerelease: false
