@@ -32,6 +32,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      BUILD_TOOLS_VERSION: "34.0.0"
     
     steps:
       - name: Checkout repository
@@ -97,8 +99,6 @@ jobs:
 
       - name: Sign APK with debug key (fallback)
         id: sign_debug
-        env:
-          BUILD_TOOLS_VERSION: "34.0.0"
         run: |
           # Sanitize app name for filename
           SAFE_NAME=$(echo "${{ github.event.inputs.app_name }}" | tr ' ' '_' | tr -cd '[:alnum:]_-')
