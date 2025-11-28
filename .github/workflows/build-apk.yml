@@ -97,6 +97,8 @@ jobs:
 
       - name: Sign APK with debug key (fallback)
         id: sign_debug
+        env:
+          BUILD_TOOLS_VERSION: "34.0.0"
         run: |
           # Sanitize app name for filename
           SAFE_NAME=$(echo "${{ github.event.inputs.app_name }}" | tr ' ' '_' | tr -cd '[:alnum:]_-')
@@ -109,7 +111,7 @@ jobs:
           else
             echo "Release signing not available, using debug key..."
             
-            # Generate a debug keystore
+            # Generate a debug keystore (using standard Android debug keystore settings)
             keytool -genkeypair -v \
               -keystore /tmp/debug.keystore \
               -storepass android \
@@ -124,12 +126,12 @@ jobs:
             UNSIGNED_APK="app/build/outputs/apk/release/app-release-unsigned.apk"
             
             # Align the APK
-            ${ANDROID_SDK_ROOT}/build-tools/34.0.0/zipalign -v -p 4 \
+            ${ANDROID_SDK_ROOT}/build-tools/${BUILD_TOOLS_VERSION}/zipalign -v -p 4 \
               "$UNSIGNED_APK" \
               "app/build/outputs/apk/release/app-release-aligned.apk"
             
             # Sign the APK with debug key
-            ${ANDROID_SDK_ROOT}/build-tools/34.0.0/apksigner sign \
+            ${ANDROID_SDK_ROOT}/build-tools/${BUILD_TOOLS_VERSION}/apksigner sign \
               --ks /tmp/debug.keystore \
               --ks-key-alias androiddebugkey \
               --ks-pass pass:android \
@@ -138,7 +140,7 @@ jobs:
               "app/build/outputs/apk/release/app-release-aligned.apk"
             
             # Verify the signature
-            ${ANDROID_SDK_ROOT}/build-tools/34.0.0/apksigner verify "app/build/outputs/apk/release/${SAFE_NAME}.apk"
+            ${ANDROID_SDK_ROOT}/build-tools/${BUILD_TOOLS_VERSION}/apksigner verify "app/build/outputs/apk/release/${SAFE_NAME}.apk"
             
             echo "signed=debug" >> $GITHUB_OUTPUT
             echo "::notice::APK is signed with debug key. For production, configure SIGNING_KEY, KEY_ALIAS, KEY_STORE_PASSWORD and KEY_PASSWORD secrets."
