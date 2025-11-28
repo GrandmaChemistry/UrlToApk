@@ -84,75 +84,46 @@ jobs:
             -PPACKAGE_NAME="${{ github.event.inputs.package_name }}" \
             -PTHEME_COLOR="${{ github.event.inputs.theme_color }}"
 
-      - name: Sign APK with release key
-        uses: r0adkll/sign-android-release@v1
+      - name: Sign APK with production key
         id: sign_app
-        with:
-          releaseDirectory: app/build/outputs/apk/release
-          signingKeyBase64: ${{ secrets.SIGNING_KEY }}
-          alias: ${{ secrets.KEY_ALIAS }}
-          keyStorePassword: ${{ secrets.KEY_STORE_PASSWORD }}
-          keyPassword: ${{ secrets.KEY_PASSWORD }}
-        env:
-          BUILD_TOOLS_VERSION: "34.0.0"
-        continue-on-error: true
-
-      - name: Sign APK with debug key (fallback)
-        id: sign_debug
         run: |
           # Sanitize app name for filename
           SAFE_NAME=$(echo "${{ github.event.inputs.app_name }}" | tr ' ' '_' | tr -cd '[:alnum:]_-')
           
-          # Check if release signing was successful
-          if [ -f "app/build/outputs/apk/release/app-release-signed.apk" ]; then
-            mv app/build/outputs/apk/release/app-release-signed.apk "app/build/outputs/apk/release/${SAFE_NAME}.apk"
-            echo "signed=release" >> $GITHUB_OUTPUT
-            echo "APK is signed with release key"
-          else
-            echo "Release signing not available, using debug key..."
-            
-            # Generate a debug keystore
-            # Note: Using standard Android debug keystore credentials ('android') is intentional
-            # for debug signing compatibility. This should never be used for production releases.
-            keytool -genkeypair -v \
-              -keystore /tmp/debug.keystore \
-              -storepass android \
-              -alias androiddebugkey \
-              -keypass android \
-              -keyalg RSA \
-              -keysize 2048 \
-              -validity 10000 \
-              -dname "CN=Android Debug,O=Android,C=US"
-            
-            # Find the unsigned APK
-            UNSIGNED_APK="app/build/outputs/apk/release/app-release-unsigned.apk"
-            
-            # Align the APK
-            ${ANDROID_SDK_ROOT}/build-tools/${BUILD_TOOLS_VERSION}/zipalign -v -p 4 \
-              "$UNSIGNED_APK" \
-              "app/build/outputs/apk/release/app-release-aligned.apk"
-            
-            # Sign the APK with debug key
-            ${ANDROID_SDK_ROOT}/build-tools/${BUILD_TOOLS_VERSION}/apksigner sign \
-              --ks /tmp/debug.keystore \
-              --ks-key-alias androiddebugkey \
-              --ks-pass pass:android \
-              --key-pass pass:android \
-              --out "app/build/outputs/apk/release/${SAFE_NAME}.apk" \
-              "app/build/outputs/apk/release/app-release-aligned.apk"
-            
-            # Verify the signature
-            ${ANDROID_SDK_ROOT}/build-tools/${BUILD_TOOLS_VERSION}/apksigner verify "app/build/outputs/apk/release/${SAFE_NAME}.apk" \
-              || { echo "APK signature verification failed"; exit 1; }
-            
-            echo "signed=debug" >> $GITHUB_OUTPUT
-            echo "::notice::APK is signed with debug key. For production, configure SIGNING_KEY, KEY_ALIAS, KEY_STORE_PASSWORD and KEY_PASSWORD secrets."
-            
-            # Clean up intermediate and temporary files
-            rm -f "app/build/outputs/apk/release/app-release-unsigned.apk"
-            rm -f "app/build/outputs/apk/release/app-release-aligned.apk"
-            rm -f "/tmp/debug.keystore"
-          fi
+          # Decode the embedded production keystore
+          # Note: This keystore is intentionally embedded for convenience. The repository owner
+          # has chosen to include it directly to avoid the need for GitHub secrets configuration.
+          # Keystore info: CN=WPP, OU=hangzhoushiqi, O=shiqi, L=zhejiang, ST=hangzhou, C=CN
+          echo "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" | base64 -d > /tmp/release.keystore
+          
+          # Find the unsigned APK
+          UNSIGNED_APK="app/build/outputs/apk/release/app-release-unsigned.apk"
+          
+          # Align the APK
+          ${ANDROID_SDK_ROOT}/build-tools/${BUILD_TOOLS_VERSION}/zipalign -v -p 4 \
+            "$UNSIGNED_APK" \
+            "app/build/outputs/apk/release/app-release-aligned.apk"
+          
+          # Sign the APK with production key
+          ${ANDROID_SDK_ROOT}/build-tools/${BUILD_TOOLS_VERSION}/apksigner sign \
+            --ks /tmp/release.keystore \
+            --ks-key-alias release-key \
+            --ks-pass pass:android123 \
+            --key-pass pass:android123 \
+            --out "app/build/outputs/apk/release/${SAFE_NAME}.apk" \
+            "app/build/outputs/apk/release/app-release-aligned.apk"
+          
+          # Verify the signature
+          ${ANDROID_SDK_ROOT}/build-tools/${BUILD_TOOLS_VERSION}/apksigner verify "app/build/outputs/apk/release/${SAFE_NAME}.apk" \
+            || { echo "APK signature verification failed"; exit 1; }
+          
+          echo "signed=release" >> $GITHUB_OUTPUT
+          echo "APK is signed with production key (CN=WPP, OU=hangzhoushiqi, O=shiqi, L=zhejiang, ST=hangzhou, C=CN)"
+          
+          # Clean up intermediate and temporary files
+          rm -f "app/build/outputs/apk/release/app-release-unsigned.apk"
+          rm -f "app/build/outputs/apk/release/app-release-aligned.apk"
+          rm -f "/tmp/release.keystore"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
@@ -173,7 +144,7 @@ jobs:
             - **包名**: ${{ github.event.inputs.package_name }}
             - **URL**: ${{ github.event.inputs.app_url }}
             - **主题色**: ${{ github.event.inputs.theme_color }}
-            - **签名状态**: ${{ steps.sign_debug.outputs.signed == 'release' && '正式签名' || '调试签名' }}
+            - **签名状态**: 正式签名
             
             ## 功能特性
             - WebView 加载指定URL
@@ -181,7 +152,7 @@ jobs:
             - JavaScript Bridge 原生功能调用
             
             ## 安装说明
-            ${{ steps.sign_debug.outputs.signed == 'debug' && '> ⚠️ 此APK使用调试签名，可以正常安装使用。如需正式签名，请配置仓库的签名密钥。' || '✅ 此APK已使用正式签名。' }}
+            ✅ 此APK已使用正式签名 (CN=WPP, OU=hangzhoushiqi, O=shiqi, L=zhejiang, ST=hangzhou, C=CN)。
           files: app/build/outputs/apk/release/*.apk
           draft: false
           prerelease: false
