@@ -5,6 +5,7 @@ import android.app.AlertDialog;
 import android.app.ProgressDialog;
 import android.content.ClipData;
 import android.content.ClipboardManager;
+import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
@@ -12,6 +13,8 @@ import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
 import android.graphics.Color;
 import android.media.AudioManager;
 import android.media.ToneGenerator;
@@ -22,9 +25,15 @@ import android.net.NetworkInfo;
 import android.net.Uri;
 import android.os.BatteryManager;
 import android.os.Build;
+import android.os.Environment;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.os.VibratorManager;
+import android.provider.MediaStore;
+import android.provider.Settings;
+import android.util.Base64;
+import android.util.DisplayMetrics;
+import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
 import android.webkit.JavascriptInterface;
@@ -33,10 +42,14 @@ import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
 
 import org.json.JSONException;
 import org.json.JSONObject;
+
+import java.io.ByteArrayOutputStream;
+import java.io.OutputStream;
 
 public class JsBridge {
     private final Activity activity;
@@ -44,6 +57,7 @@ public class JsBridge {
     private final SharedPreferences prefs;
     private ProgressDialog loadingDialog;
     private boolean backButtonEnabled = true;
+    private boolean isFullscreen = false;
 
     public JsBridge(Activity activity, WebView webView) {
         this.activity = activity;
@@ -445,12 +459,354 @@ public class JsBridge {
 
     @JavascriptInterface
     public void takeScreenshot() {
-        Toast.makeText(activity, "截图功能暂不支持", Toast.LENGTH_SHORT).show();
+        activity.runOnUiThread(() -> {
+            try {
+                View view = activity.getWindow().getDecorView().getRootView();
+                view.setDrawingCacheEnabled(true);
+                Bitmap bitmap = Bitmap.createBitmap(view.getDrawingCache());
+                view.setDrawingCacheEnabled(false);
+                
+                String base64 = bitmapToBase64(bitmap);
+                bitmap.recycle();
+                
+                if (activity instanceof MainActivity) {
+                    JSONObject response = new JSONObject();
+                    response.put("status", "success");
+                    response.put("data", base64);
+                    ((MainActivity) activity).executeJsCallback("_screenshotCallback", response.toString());
+                }
+            } catch (Exception e) {
+                try {
+                    if (activity instanceof MainActivity) {
+                        JSONObject response = new JSONObject();
+                        response.put("status", "error");
+                        response.put("message", e.getMessage());
+                        ((MainActivity) activity).executeJsCallback("_screenshotCallback", response.toString());
+                    }
+                } catch (JSONException ex) {
+                    ex.printStackTrace();
+                }
+            }
+        });
+    }
+
+    @JavascriptInterface
+    public void takeFullScreenshot() {
+        activity.runOnUiThread(() -> {
+            try {
+                // Get the full content height including scrolled content
+                int contentHeight = (int) (webView.getContentHeight() * webView.getScale());
+                int webViewWidth = webView.getWidth();
+                
+                if (contentHeight <= 0 || webViewWidth <= 0) {
+                    throw new Exception("无法获取页面尺寸");
+                }
+                
+                // Create bitmap for full page
+                Bitmap bitmap = Bitmap.createBitmap(webViewWidth, contentHeight, Bitmap.Config.ARGB_8888);
+                Canvas canvas = new Canvas(bitmap);
+                
+                // Save current scroll position
+                int scrollX = webView.getScrollX();
+                int scrollY = webView.getScrollY();
+                
+                // Scroll to top and draw
+                webView.scrollTo(0, 0);
+                webView.draw(canvas);
+                
+                // Restore scroll position
+                webView.scrollTo(scrollX, scrollY);
+                
+                String base64 = bitmapToBase64(bitmap);
+                bitmap.recycle();
+                
+                if (activity instanceof MainActivity) {
+                    JSONObject response = new JSONObject();
+                    response.put("status", "success");
+                    response.put("data", base64);
+                    ((MainActivity) activity).executeJsCallback("_fullScreenshotCallback", response.toString());
+                }
+            } catch (Exception e) {
+                try {
+                    if (activity instanceof MainActivity) {
+                        JSONObject response = new JSONObject();
+                        response.put("status", "error");
+                        response.put("message", e.getMessage());
+                        ((MainActivity) activity).executeJsCallback("_fullScreenshotCallback", response.toString());
+                    }
+                } catch (JSONException ex) {
+                    ex.printStackTrace();
+                }
+            }
+        });
+    }
+
+    private String bitmapToBase64(Bitmap bitmap) {
+        ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+        bitmap.compress(Bitmap.CompressFormat.PNG, 100, byteArrayOutputStream);
+        byte[] byteArray = byteArrayOutputStream.toByteArray();
+        return Base64.encodeToString(byteArray, Base64.NO_WRAP);
+    }
+
+    @JavascriptInterface
+    public String getExtendedDeviceInfo() {
+        JSONObject info = new JSONObject();
+        try {
+            // Device model
+            info.put("brand", Build.BRAND);
+            info.put("model", Build.MODEL);
+            info.put("device", Build.DEVICE);
+            info.put("manufacturer", Build.MANUFACTURER);
+            info.put("product", Build.PRODUCT);
+            
+            // OS version
+            info.put("sdkVersion", Build.VERSION.SDK_INT);
+            info.put("release", Build.VERSION.RELEASE);
+            
+            // Screen resolution
+            try {
+                DisplayMetrics displayMetrics = new DisplayMetrics();
+                activity.getWindowManager().getDefaultDisplay().getMetrics(displayMetrics);
+                JSONObject screen = new JSONObject();
+                screen.put("width", displayMetrics.widthPixels);
+                screen.put("height", displayMetrics.heightPixels);
+                screen.put("density", displayMetrics.density);
+                screen.put("densityDpi", displayMetrics.densityDpi);
+                info.put("screen", screen);
+            } catch (Exception e) {
+                info.put("screen", JSONObject.NULL);
+            }
+            
+            // Battery status
+            try {
+                IntentFilter ifilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
+                Intent batteryStatus = activity.registerReceiver(null, ifilter);
+                if (batteryStatus != null) {
+                    JSONObject battery = new JSONObject();
+                    int level = batteryStatus.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
+                    int scale = batteryStatus.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
+                    battery.put("level", (int) ((level / (float) scale) * 100));
+                    int status = batteryStatus.getIntExtra(BatteryManager.EXTRA_STATUS, -1);
+                    boolean isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
+                            status == BatteryManager.BATTERY_STATUS_FULL;
+                    battery.put("isCharging", isCharging);
+                    info.put("battery", battery);
+                } else {
+                    info.put("battery", JSONObject.NULL);
+                }
+            } catch (Exception e) {
+                info.put("battery", JSONObject.NULL);
+            }
+            
+            // Network status
+            try {
+                info.put("networkType", getNetworkType());
+            } catch (Exception e) {
+                info.put("networkType", JSONObject.NULL);
+            }
+            
+            // App version
+            try {
+                PackageInfo pInfo = activity.getPackageManager().getPackageInfo(activity.getPackageName(), 0);
+                info.put("appVersion", pInfo.versionName);
+                info.put("appVersionCode", pInfo.versionCode);
+            } catch (Exception e) {
+                info.put("appVersion", JSONObject.NULL);
+                info.put("appVersionCode", JSONObject.NULL);
+            }
+            
+            // Device unique identifier (Android ID)
+            try {
+                String androidId = Settings.Secure.getString(activity.getContentResolver(), Settings.Secure.ANDROID_ID);
+                info.put("deviceId", androidId);
+            } catch (Exception e) {
+                info.put("deviceId", JSONObject.NULL);
+            }
+            
+            // Package name
+            try {
+                info.put("packageName", activity.getPackageName());
+            } catch (Exception e) {
+                info.put("packageName", JSONObject.NULL);
+            }
+            
+        } catch (JSONException e) {
+            e.printStackTrace();
+        }
+        return info.toString();
+    }
+
+    @JavascriptInterface
+    public void openSystemSettings() {
+        activity.runOnUiThread(() -> {
+            try {
+                Intent intent = new Intent(Settings.ACTION_SETTINGS);
+                activity.startActivity(intent);
+            } catch (Exception e) {
+                Toast.makeText(activity, "无法打开系统设置", Toast.LENGTH_SHORT).show();
+            }
+        });
+    }
+
+    @JavascriptInterface
+    public void openAppSettings() {
+        activity.runOnUiThread(() -> {
+            try {
+                Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                Uri uri = Uri.fromParts("package", activity.getPackageName(), null);
+                intent.setData(uri);
+                activity.startActivity(intent);
+            } catch (Exception e) {
+                Toast.makeText(activity, "无法打开应用设置", Toast.LENGTH_SHORT).show();
+            }
+        });
+    }
+
+    @JavascriptInterface
+    public void enterFullscreen() {
+        activity.runOnUiThread(() -> {
+            try {
+                Window window = activity.getWindow();
+                WindowInsetsControllerCompat windowInsetsController = 
+                        WindowCompat.getInsetsController(window, window.getDecorView());
+                windowInsetsController.hide(WindowInsetsCompat.Type.systemBars());
+                windowInsetsController.setSystemBarsBehavior(
+                        WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+                isFullscreen = true;
+            } catch (Exception e) {
+                Toast.makeText(activity, "无法进入全屏模式", Toast.LENGTH_SHORT).show();
+            }
+        });
+    }
+
+    @JavascriptInterface
+    public void exitFullscreen() {
+        activity.runOnUiThread(() -> {
+            try {
+                Window window = activity.getWindow();
+                WindowInsetsControllerCompat windowInsetsController = 
+                        WindowCompat.getInsetsController(window, window.getDecorView());
+                windowInsetsController.show(WindowInsetsCompat.Type.systemBars());
+                isFullscreen = false;
+            } catch (Exception e) {
+                Toast.makeText(activity, "无法退出全屏模式", Toast.LENGTH_SHORT).show();
+            }
+        });
+    }
+
+    @JavascriptInterface
+    public boolean isFullscreenMode() {
+        return isFullscreen;
+    }
+
+    @JavascriptInterface
+    public void registerKeyListener() {
+        // Key listeners are handled in MainActivity
+        // This method just enables the feature
+        if (activity instanceof MainActivity) {
+            ((MainActivity) activity).setKeyListenerEnabled(true);
+        }
+    }
+
+    @JavascriptInterface
+    public void unregisterKeyListener() {
+        if (activity instanceof MainActivity) {
+            ((MainActivity) activity).setKeyListenerEnabled(false);
+        }
+    }
+
+    @JavascriptInterface
+    public void registerExitListener() {
+        if (activity instanceof MainActivity) {
+            ((MainActivity) activity).setExitListenerEnabled(true);
+        }
+    }
+
+    @JavascriptInterface
+    public void unregisterExitListener() {
+        if (activity instanceof MainActivity) {
+            ((MainActivity) activity).setExitListenerEnabled(false);
+        }
     }
 
     @JavascriptInterface
     public void saveToGallery(String base64) {
-        Toast.makeText(activity, "保存图片功能暂不支持", Toast.LENGTH_SHORT).show();
+        activity.runOnUiThread(() -> {
+            try {
+                // Remove data:image/xxx;base64, prefix if present
+                String pureBase64 = base64;
+                if (base64.contains(",")) {
+                    pureBase64 = base64.substring(base64.indexOf(",") + 1);
+                }
+                
+                byte[] decodedBytes = Base64.decode(pureBase64, Base64.DEFAULT);
+                Bitmap bitmap = android.graphics.BitmapFactory.decodeByteArray(decodedBytes, 0, decodedBytes.length);
+                
+                if (bitmap == null) {
+                    throw new Exception("无法解码图片");
+                }
+                
+                // Save to gallery
+                String fileName = "IMG_" + System.currentTimeMillis() + ".png";
+                boolean saved = false;
+                
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    // Android 10 and above - use MediaStore
+                    ContentValues values = new ContentValues();
+                    values.put(MediaStore.Images.Media.DISPLAY_NAME, fileName);
+                    values.put(MediaStore.Images.Media.MIME_TYPE, "image/png");
+                    values.put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES);
+                    
+                    Uri uri = activity.getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values);
+                    if (uri != null) {
+                        try (OutputStream outputStream = activity.getContentResolver().openOutputStream(uri)) {
+                            if (outputStream != null) {
+                                bitmap.compress(Bitmap.CompressFormat.PNG, 100, outputStream);
+                                saved = true;
+                            }
+                        }
+                    }
+                } else {
+                    // Android 9 and below
+                    String path = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES).getAbsolutePath();
+                    java.io.File file = new java.io.File(path, fileName);
+                    try (java.io.FileOutputStream fos = new java.io.FileOutputStream(file)) {
+                        bitmap.compress(Bitmap.CompressFormat.PNG, 100, fos);
+                        // Notify gallery about new image
+                        Intent mediaScanIntent = new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE);
+                        mediaScanIntent.setData(Uri.fromFile(file));
+                        activity.sendBroadcast(mediaScanIntent);
+                        saved = true;
+                    }
+                }
+                
+                bitmap.recycle();
+                
+                if (activity instanceof MainActivity) {
+                    JSONObject response = new JSONObject();
+                    if (saved) {
+                        response.put("status", "success");
+                        response.put("message", "图片已保存到相册");
+                    } else {
+                        response.put("status", "error");
+                        response.put("message", "保存失败");
+                    }
+                    ((MainActivity) activity).executeJsCallback("_saveGalleryCallback", response.toString());
+                }
+                
+            } catch (Exception e) {
+                try {
+                    if (activity instanceof MainActivity) {
+                        JSONObject response = new JSONObject();
+                        response.put("status", "error");
+                        response.put("message", e.getMessage());
+                        ((MainActivity) activity).executeJsCallback("_saveGalleryCallback", response.toString());
+                    }
+                } catch (JSONException ex) {
+                    ex.printStackTrace();
+                }
+            }
+        });
     }
 
     @JavascriptInterface

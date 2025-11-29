@@ -2,7 +2,6 @@ package com.webview.app;
 
 import android.Manifest;
 import android.annotation.SuppressLint;
-import android.app.AlertDialog;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
@@ -50,12 +49,17 @@ public class MainActivity extends AppCompatActivity {
     private static final int LOCATION_PERMISSION_REQUEST = 1001;
     private static final long LOCATION_UPDATE_INTERVAL = 10000; // 10 seconds
     private static final long LOCATION_MIN_UPDATE_INTERVAL = 5000; // 5 seconds
+    private static final long BACK_PRESS_EXIT_INTERVAL = 1000; // 1 second for double tap exit
 
     private WebView webView;
     private ProgressBar progressBar;
     private ValueCallback<Uri[]> filePathCallback;
     private JsBridge jsBridge;
     private FusedLocationProviderClient fusedLocationClient;
+    private long lastBackPressTime = 0;
+    private Toast exitToast;
+    private boolean keyListenerEnabled = false;
+    private boolean exitListenerEnabled = false;
 
     private final ActivityResultLauncher<Intent> fileChooserLauncher = registerForActivityResult(
             new ActivityResultContracts.StartActivityForResult(),
@@ -283,6 +287,7 @@ public class MainActivity extends AppCompatActivity {
                 "  showToast: function(message) { AndroidBridge.showToast(message); }," +
                 "  vibrate: function(duration) { AndroidBridge.vibrate(duration); }," +
                 "  getDeviceInfo: function() { return JSON.parse(AndroidBridge.getDeviceInfo()); }," +
+                "  getExtendedDeviceInfo: function() { return JSON.parse(AndroidBridge.getExtendedDeviceInfo()); }," +
                 "  getNetworkType: function() { return AndroidBridge.getNetworkType(); }," +
                 "  copyToClipboard: function(text) { AndroidBridge.copyToClipboard(text); }," +
                 "  openUrl: function(url) { AndroidBridge.openUrl(url); }," +
@@ -300,6 +305,7 @@ public class MainActivity extends AppCompatActivity {
                 "  isWifiConnected: function() { return AndroidBridge.isWifiConnected(); }," +
                 "  playSound: function(soundName) { AndroidBridge.playSound(soundName); }," +
                 "  takeScreenshot: function(callback) { window._screenshotCallback = callback; AndroidBridge.takeScreenshot(); }," +
+                "  takeFullScreenshot: function(callback) { window._fullScreenshotCallback = callback; AndroidBridge.takeFullScreenshot(); }," +
                 "  saveToGallery: function(base64, callback) { window._saveGalleryCallback = callback; AndroidBridge.saveToGallery(base64); }," +
                 "  getContacts: function(callback) { window._contactsCallback = callback; AndroidBridge.getContacts(); }," +
                 "  makeCall: function(phone) { AndroidBridge.makeCall(phone); }," +
@@ -313,7 +319,16 @@ public class MainActivity extends AppCompatActivity {
                 "  showAlert: function(title, message, callback) { window._alertCallback = callback; AndroidBridge.showAlert(title, message); }," +
                 "  showConfirm: function(title, message, callback) { window._confirmCallback = callback; AndroidBridge.showConfirm(title, message); }," +
                 "  enableBackButton: function(enabled) { AndroidBridge.enableBackButton(enabled); }," +
-                "  setTitle: function(title) { AndroidBridge.setTitle(title); }" +
+                "  setTitle: function(title) { AndroidBridge.setTitle(title); }," +
+                "  openSystemSettings: function() { AndroidBridge.openSystemSettings(); }," +
+                "  openAppSettings: function() { AndroidBridge.openAppSettings(); }," +
+                "  enterFullscreen: function() { AndroidBridge.enterFullscreen(); }," +
+                "  exitFullscreen: function() { AndroidBridge.exitFullscreen(); }," +
+                "  isFullscreenMode: function() { return AndroidBridge.isFullscreenMode(); }," +
+                "  registerKeyListener: function(callback) { window._keyEventCallback = callback; AndroidBridge.registerKeyListener(); }," +
+                "  unregisterKeyListener: function() { window._keyEventCallback = null; AndroidBridge.unregisterKeyListener(); }," +
+                "  registerExitListener: function(callback) { window._exitEventCallback = callback; AndroidBridge.registerExitListener(); }," +
+                "  unregisterExitListener: function() { window._exitEventCallback = null; AndroidBridge.unregisterExitListener(); }" +
                 "};" +
                 "console.log('NativeBridge initialized');" +
                 "if (window.onNativeBridgeReady) { window.onNativeBridgeReady(); }" +
@@ -360,15 +375,45 @@ public class MainActivity extends AppCompatActivity {
 
     @SuppressLint("MissingPermission")
     private void getLocation() {
+        // Check if location services are enabled
+        android.location.LocationManager locationManager = (android.location.LocationManager) getSystemService(LOCATION_SERVICE);
+        boolean isGpsEnabled = false;
+        boolean isNetworkEnabled = false;
+        
+        try {
+            isGpsEnabled = locationManager.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER);
+        } catch (Exception ex) {
+            // GPS provider not available
+        }
+        
+        try {
+            isNetworkEnabled = locationManager.isProviderEnabled(android.location.LocationManager.NETWORK_PROVIDER);
+        } catch (Exception ex) {
+            // Network provider not available
+        }
+        
+        if (!isGpsEnabled && !isNetworkEnabled) {
+            sendLocationErrorToJs("error", "位置服务未开启，请在系统设置中开启位置服务");
+            return;
+        }
+        
         LocationRequest locationRequest = new LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, LOCATION_UPDATE_INTERVAL)
                 .setWaitForAccurateLocation(false)
                 .setMinUpdateIntervalMillis(LOCATION_MIN_UPDATE_INTERVAL)
                 .setMaxUpdates(1)
                 .build();
 
+        // Create a timeout handler
+        final android.os.Handler timeoutHandler = new android.os.Handler(Looper.getMainLooper());
+        final boolean[] locationReceived = {false};
+        
         LocationCallback locationCallback = new LocationCallback() {
             @Override
             public void onLocationResult(@NonNull LocationResult locationResult) {
+                if (locationReceived[0]) return; // Already handled
+                locationReceived[0] = true;
+                timeoutHandler.removeCallbacksAndMessages(null);
+                
                 Location location = locationResult.getLastLocation();
                 if (location != null) {
                     sendLocationToJs(location, "success");
@@ -378,20 +423,50 @@ public class MainActivity extends AppCompatActivity {
                 fusedLocationClient.removeLocationUpdates(this);
             }
         };
+        
+        // Set timeout for location request (15 seconds)
+        final LocationCallback finalLocationCallback = locationCallback;
+        timeoutHandler.postDelayed(() -> {
+            if (!locationReceived[0]) {
+                locationReceived[0] = true;
+                fusedLocationClient.removeLocationUpdates(finalLocationCallback);
+                sendLocationErrorToJs("error", "获取位置超时，请确保设备在室外或靠近窗户");
+            }
+        }, 15000);
 
         // First try to get last known location
         fusedLocationClient.getLastLocation()
                 .addOnSuccessListener(this, location -> {
-                    if (location != null) {
+                    if (location != null && !locationReceived[0]) {
+                        locationReceived[0] = true;
+                        timeoutHandler.removeCallbacksAndMessages(null);
                         sendLocationToJs(location, "success");
-                    } else {
+                    } else if (!locationReceived[0]) {
                         // Request fresh location
-                        fusedLocationClient.requestLocationUpdates(locationRequest, locationCallback, Looper.getMainLooper());
+                        try {
+                            fusedLocationClient.requestLocationUpdates(locationRequest, finalLocationCallback, Looper.getMainLooper());
+                        } catch (Exception e) {
+                            if (!locationReceived[0]) {
+                                locationReceived[0] = true;
+                                timeoutHandler.removeCallbacksAndMessages(null);
+                                sendLocationErrorToJs("error", "请求位置更新失败: " + e.getMessage());
+                            }
+                        }
                     }
                 })
                 .addOnFailureListener(e -> {
-                    // Request fresh location on failure
-                    fusedLocationClient.requestLocationUpdates(locationRequest, locationCallback, Looper.getMainLooper());
+                    if (!locationReceived[0]) {
+                        // Request fresh location on failure
+                        try {
+                            fusedLocationClient.requestLocationUpdates(locationRequest, finalLocationCallback, Looper.getMainLooper());
+                        } catch (Exception ex) {
+                            if (!locationReceived[0]) {
+                                locationReceived[0] = true;
+                                timeoutHandler.removeCallbacksAndMessages(null);
+                                sendLocationErrorToJs("error", "请求位置更新失败: " + ex.getMessage());
+                            }
+                        }
+                    }
                 });
     }
 
@@ -451,25 +526,99 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
+        // Notify JavaScript about key events if listener is enabled
+        if (keyListenerEnabled) {
+            notifyKeyEvent(keyCode, "keydown");
+        }
+        
         if (keyCode == KeyEvent.KEYCODE_BACK) {
             if (webView.canGoBack()) {
                 webView.goBack();
                 return true;
             } else {
-                showExitConfirmDialog();
+                handleBackExit();
                 return true;
             }
         }
         return super.onKeyDown(keyCode, event);
     }
 
-    private void showExitConfirmDialog() {
-        new AlertDialog.Builder(this)
-                .setTitle("退出应用")
-                .setMessage("确定要退出应用吗？")
-                .setPositiveButton("确定", (dialog, which) -> finish())
-                .setNegativeButton("取消", null)
-                .show();
+    private void notifyKeyEvent(int keyCode, String eventType) {
+        runOnUiThread(() -> {
+            try {
+                JSONObject response = new JSONObject();
+                response.put("eventType", eventType);
+                
+                String keyName;
+                switch (keyCode) {
+                    case KeyEvent.KEYCODE_BACK:
+                        keyName = "back";
+                        break;
+                    case KeyEvent.KEYCODE_HOME:
+                        keyName = "home";
+                        break;
+                    case KeyEvent.KEYCODE_APP_SWITCH:
+                        keyName = "task";
+                        break;
+                    case KeyEvent.KEYCODE_MENU:
+                        keyName = "menu";
+                        break;
+                    default:
+                        keyName = "key_" + keyCode;
+                        break;
+                }
+                response.put("key", keyName);
+                response.put("keyCode", keyCode);
+                
+                executeJsCallback("_keyEventCallback", response.toString());
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        });
+    }
+
+    private void handleBackExit() {
+        long currentTime = System.currentTimeMillis();
+        if (currentTime - lastBackPressTime <= BACK_PRESS_EXIT_INTERVAL) {
+            // Double tap within 1 second, exit the app
+            if (exitToast != null) {
+                exitToast.cancel();
+            }
+            // Notify exit listener before exiting
+            if (exitListenerEnabled) {
+                notifyExitEvent();
+            }
+            finish();
+        } else {
+            // First tap, show toast message
+            lastBackPressTime = currentTime;
+            if (exitToast != null) {
+                exitToast.cancel();
+            }
+            exitToast = Toast.makeText(this, "再按一次退出应用", Toast.LENGTH_SHORT);
+            exitToast.show();
+        }
+    }
+
+    private void notifyExitEvent() {
+        runOnUiThread(() -> {
+            try {
+                JSONObject response = new JSONObject();
+                response.put("event", "exit");
+                response.put("timestamp", System.currentTimeMillis());
+                executeJsCallback("_exitEventCallback", response.toString());
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        });
+    }
+
+    public void setKeyListenerEnabled(boolean enabled) {
+        this.keyListenerEnabled = enabled;
+    }
+
+    public void setExitListenerEnabled(boolean enabled) {
+        this.exitListenerEnabled = enabled;
     }
 
     public void executeJsCallback(String callbackName, String data) {

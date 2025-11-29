@@ -26,6 +26,45 @@ on:
         description: '应用图标URL (公开可访问的PNG图片地址，可选)'
         required: false
         type: string
+      enable_splash_image:
+        description: '启用首屏图片 (true/false)'
+        required: false
+        type: boolean
+        default: false
+      splash_image_url:
+        description: '首屏图片URL (启用首屏图片时必填，公开可访问的图片地址)'
+        required: false
+        type: string
+      cert_cn:
+        description: '证书姓名 (CN)'
+        required: false
+        type: string
+        default: 'wppApk'
+      cert_ou:
+        description: '证书组织单位 (OU)'
+        required: false
+        type: string
+        default: 'hangzhoushiqi'
+      cert_o:
+        description: '证书组织 (O)'
+        required: false
+        type: string
+        default: 'shiqi'
+      cert_l:
+        description: '证书城市 (L)'
+        required: false
+        type: string
+        default: 'zhejiang'
+      cert_st:
+        description: '证书省份 (ST)'
+        required: false
+        type: string
+        default: 'hangzhou'
+      cert_c:
+        description: '证书国家 (C)'
+        required: false
+        type: string
+        default: 'CN'
 
 jobs:
   build:
@@ -76,6 +115,33 @@ jobs:
           convert /tmp/app_icon.png -resize 192x192 app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
           convert /tmp/app_icon.png -resize 192x192 app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png
 
+      - name: Process splash image
+        if: ${{ github.event.inputs.enable_splash_image == 'true' && github.event.inputs.splash_image_url != '' }}
+        run: |
+          # Create assets directory if not exists
+          mkdir -p app/src/main/assets
+          
+          # Download splash image from URL with security options
+          curl -L --fail --max-time 60 --max-filesize 20971520 -o /tmp/splash_image_raw "${{ github.event.inputs.splash_image_url }}"
+          
+          # Validate image file format
+          FILE_TYPE=$(file /tmp/splash_image_raw)
+          if echo "$FILE_TYPE" | grep -q "PNG image"; then
+            cp /tmp/splash_image_raw app/src/main/assets/splash_image.png
+          elif echo "$FILE_TYPE" | grep -q "JPEG image"; then
+            # Install ImageMagick if not already installed
+            if ! command -v convert &> /dev/null; then
+              sudo apt-get update && sudo apt-get install -y imagemagick
+            fi
+            # Convert JPEG to PNG
+            convert /tmp/splash_image_raw app/src/main/assets/splash_image.png
+          else
+            echo "Error: Invalid image format. Only PNG and JPEG are supported."
+            exit 1
+          fi
+          
+          echo "Splash image processed successfully"
+
       - name: Build Release APK
         run: |
           ./gradlew assembleRelease \
@@ -84,17 +150,24 @@ jobs:
             -PPACKAGE_NAME="${{ github.event.inputs.package_name }}" \
             -PTHEME_COLOR="${{ github.event.inputs.theme_color }}"
 
+      - name: Generate signing keystore
+        run: |
+          # Generate a new keystore with user-provided certificate info
+          keytool -genkey -v \
+            -keystore /tmp/release.keystore \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -alias release-key \
+            -storepass android123 \
+            -keypass android123 \
+            -dname "CN=${{ github.event.inputs.cert_cn }}, OU=${{ github.event.inputs.cert_ou }}, O=${{ github.event.inputs.cert_o }}, L=${{ github.event.inputs.cert_l }}, ST=${{ github.event.inputs.cert_st }}, C=${{ github.event.inputs.cert_c }}"
+
       - name: Sign APK with production key
         id: sign_app
         run: |
           # Sanitize app name for filename
           SAFE_NAME=$(echo "${{ github.event.inputs.app_name }}" | tr ' ' '_' | tr -cd '[:alnum:]_-')
-          
-          # Decode the embedded production keystore
-          # Note: This keystore is intentionally embedded for convenience. The repository owner
-          # has chosen to include it directly to avoid the need for GitHub secrets configuration.
-          # Keystore info: CN=WPP, OU=hangzhoushiqi, O=shiqi, L=zhejiang, ST=hangzhou, C=CN
-          echo "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" | base64 -d > /tmp/release.keystore
           
           # Find the unsigned APK
           UNSIGNED_APK="app/build/outputs/apk/release/app-release-unsigned.apk"
@@ -118,7 +191,7 @@ jobs:
             || { echo "APK signature verification failed"; exit 1; }
           
           echo "signed=release" >> $GITHUB_OUTPUT
-          echo "APK is signed with production key (CN=WPP, OU=hangzhoushiqi, O=shiqi, L=zhejiang, ST=hangzhou, C=CN)"
+          echo "APK is signed with production key (CN=${{ github.event.inputs.cert_cn }}, OU=${{ github.event.inputs.cert_ou }}, O=${{ github.event.inputs.cert_o }}, L=${{ github.event.inputs.cert_l }}, ST=${{ github.event.inputs.cert_st }}, C=${{ github.event.inputs.cert_c }})"
           
           # Clean up intermediate and temporary files
           rm -f "app/build/outputs/apk/release/app-release-unsigned.apk"
@@ -144,15 +217,25 @@ jobs:
             - **包名**: ${{ github.event.inputs.package_name }}
             - **URL**: ${{ github.event.inputs.app_url }}
             - **主题色**: ${{ github.event.inputs.theme_color }}
+            - **首屏图片**: ${{ github.event.inputs.enable_splash_image == 'true' && '已启用' || '未启用' }}
             - **签名状态**: 正式签名
+            
+            ## 证书信息
+            - CN=${{ github.event.inputs.cert_cn }}
+            - OU=${{ github.event.inputs.cert_ou }}
+            - O=${{ github.event.inputs.cert_o }}
+            - L=${{ github.event.inputs.cert_l }}
+            - ST=${{ github.event.inputs.cert_st }}
+            - C=${{ github.event.inputs.cert_c }}
             
             ## 功能特性
             - WebView 加载指定URL
-            - 返回键二次确认退出
+            - 首屏加载动画
+            - 返回键二次确认退出（Toast提示）
             - JavaScript Bridge 原生功能调用
             
             ## 安装说明
-            ✅ 此APK已使用正式签名 (CN=WPP, OU=hangzhoushiqi, O=shiqi, L=zhejiang, ST=hangzhou, C=CN)。
+            ✅ 此APK已使用正式签名。
           files: app/build/outputs/apk/release/*.apk
           draft: false
           prerelease: false
