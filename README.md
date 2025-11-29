@@ -517,6 +517,20 @@ NativeBridge.share('分享标题', '分享内容描述', 'https://example.com');
 NativeBridge.copyToClipboard('要复制的文本');
 ```
 
+#### getClipboardContent()
+读取剪贴板中的文本内容。如果剪贴板为空或不包含文本，则返回空字符串。
+
+```javascript
+var clipboardText = NativeBridge.getClipboardContent();
+if (clipboardText) {
+  console.log('剪贴板内容:', clipboardText);
+} else {
+  console.log('剪贴板为空');
+}
+```
+
+> **注意**: 此 API 只读取文本内容，不处理图片等其他格式的内容。
+
 #### openUrl(url)
 在外部浏览器中打开链接。
 
@@ -642,6 +656,7 @@ NativeBridge.enableBackButton(false); // 禁用
   <button onclick="takeScreenshotDemo()">截图</button>
   <button onclick="toggleFullscreenDemo()">切换全屏</button>
   <button onclick="getLocationDemo()">获取位置</button>
+  <button onclick="clipboardDemo()">剪贴板操作</button>
   
   <div id="output"></div>
   
@@ -703,10 +718,55 @@ NativeBridge.enableBackButton(false); // 禁用
         }
       });
     }
+    
+    function clipboardDemo() {
+      // 先复制一些内容
+      NativeBridge.copyToClipboard('这是测试文本');
+      
+      // 然后读取剪贴板
+      setTimeout(function() {
+        var content = NativeBridge.getClipboardContent();
+        document.getElementById('output').innerHTML = '剪贴板内容: ' + content;
+      }, 500);
+    }
   </script>
 </body>
 </html>
 ```
+
+## 更新日志
+
+### 最新版本修复和改进
+
+1. **首屏加载动画优化**
+   - 修复首屏不显示的问题，确保首屏在应用启动时正常显示
+   - 添加淡入淡出效果，提供更流畅的视觉体验
+   - 首屏在网页加载完毕后显示 1 秒，然后淡出进入主界面
+   - 首屏显示时隐藏顶部状态栏，进入主界面后恢复显示
+
+2. **进度条优化**
+   - 修复进度条显示不正常的问题，确保正确反映网页加载进度
+   - 进度条现在悬浮在网页内容之上，不占用任何页面空间
+   - 网页加载完毕后进度条自动隐藏
+
+3. **应用状态恢复**
+   - 退出应用后再次进入时，能够恢复到上次退出时的状态
+   - 不再重新加载页面，保持用户的浏览进度
+
+4. **全屏模式优化**
+   - 在全屏状态下按返回键直接退出应用，而不是先退出全屏
+
+5. **返回键二次确认**
+   - 改用 Toast 提示方式，显示"再按一次退出应用"
+   - 在 0.5 秒内再次点击返回键即可退出应用
+   - Toast 在底部显示
+
+6. **截图功能改进**
+   - 普通截图不再包含状态栏和导航栏，只截取应用内容区域
+   - 全屏截图能够正确截取包括不可见滚动区域的完整内容
+
+7. **新增 API**
+   - `getClipboardContent()`: 读取剪贴板中的文本内容
 
 ## 注意事项
 

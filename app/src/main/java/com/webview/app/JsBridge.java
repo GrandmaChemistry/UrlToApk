@@ -153,6 +153,22 @@ public class JsBridge {
     }
 
     @JavascriptInterface
+    public String getClipboardContent() {
+        ClipboardManager clipboard = (ClipboardManager) activity.getSystemService(Context.CLIPBOARD_SERVICE);
+        if (clipboard != null && clipboard.hasPrimaryClip()) {
+            ClipData clipData = clipboard.getPrimaryClip();
+            if (clipData != null && clipData.getItemCount() > 0) {
+                ClipData.Item item = clipData.getItemAt(0);
+                CharSequence text = item.getText();
+                if (text != null) {
+                    return text.toString();
+                }
+            }
+        }
+        return "";
+    }
+
+    @JavascriptInterface
     public void openUrl(String url) {
         activity.runOnUiThread(() -> {
             try {
@@ -461,12 +477,10 @@ public class JsBridge {
     public void takeScreenshot() {
         activity.runOnUiThread(() -> {
             try {
-                View view = activity.getWindow().getDecorView().getRootView();
-                
-                // Use draw method instead of deprecated drawing cache
-                Bitmap bitmap = Bitmap.createBitmap(view.getWidth(), view.getHeight(), Bitmap.Config.ARGB_8888);
+                // Only capture WebView content, not status bar or navigation bar
+                Bitmap bitmap = Bitmap.createBitmap(webView.getWidth(), webView.getHeight(), Bitmap.Config.ARGB_8888);
                 Canvas canvas = new Canvas(bitmap);
-                view.draw(canvas);
+                webView.draw(canvas);
                 
                 String base64 = bitmapToBase64(bitmap);
                 bitmap.recycle();
@@ -508,13 +522,43 @@ public class JsBridge {
                 // Limit the height to prevent OutOfMemoryError
                 int maxHeight = Math.min(contentHeight, 10000);
                 
+                // Save original scroll position
+                final int originalScrollY = webView.getScrollY();
+                
                 // Create bitmap for full page
                 Bitmap bitmap = Bitmap.createBitmap(webViewWidth, maxHeight, Bitmap.Config.ARGB_8888);
                 Canvas canvas = new Canvas(bitmap);
                 
-                // Draw the webView content directly without scrolling
-                // This avoids visible flickering
-                webView.draw(canvas);
+                // Translate canvas to capture from top
+                canvas.translate(0, -originalScrollY);
+                
+                // Temporarily scroll to top and draw full content
+                webView.scrollTo(0, 0);
+                
+                // Draw the entire content by using the capturePicture method approach
+                // First, we need to use JavaScript to get the actual full page content
+                // For now, we'll use a workaround by drawing at different scroll positions
+                
+                int currentHeight = 0;
+                int viewHeight = webView.getHeight();
+                
+                while (currentHeight < maxHeight) {
+                    webView.scrollTo(0, currentHeight);
+                    // Need to wait for scroll to complete
+                    try {
+                        Thread.sleep(50);
+                    } catch (InterruptedException ignored) {}
+                    
+                    canvas.save();
+                    canvas.translate(0, currentHeight);
+                    webView.draw(canvas);
+                    canvas.restore();
+                    
+                    currentHeight += viewHeight;
+                }
+                
+                // Restore original scroll position
+                webView.scrollTo(0, originalScrollY);
                 
                 String base64 = bitmapToBase64(bitmap);
                 bitmap.recycle();
