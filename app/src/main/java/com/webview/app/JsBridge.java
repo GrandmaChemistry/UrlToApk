@@ -462,9 +462,11 @@ public class JsBridge {
         activity.runOnUiThread(() -> {
             try {
                 View view = activity.getWindow().getDecorView().getRootView();
-                view.setDrawingCacheEnabled(true);
-                Bitmap bitmap = Bitmap.createBitmap(view.getDrawingCache());
-                view.setDrawingCacheEnabled(false);
+                
+                // Use draw method instead of deprecated drawing cache
+                Bitmap bitmap = Bitmap.createBitmap(view.getWidth(), view.getHeight(), Bitmap.Config.ARGB_8888);
+                Canvas canvas = new Canvas(bitmap);
+                view.draw(canvas);
                 
                 String base64 = bitmapToBase64(bitmap);
                 bitmap.recycle();
@@ -495,27 +497,24 @@ public class JsBridge {
         activity.runOnUiThread(() -> {
             try {
                 // Get the full content height including scrolled content
-                int contentHeight = (int) (webView.getContentHeight() * webView.getScale());
+                float scale = webView.getScale();
+                int contentHeight = (int) (webView.getContentHeight() * scale);
                 int webViewWidth = webView.getWidth();
                 
                 if (contentHeight <= 0 || webViewWidth <= 0) {
                     throw new Exception("无法获取页面尺寸");
                 }
                 
+                // Limit the height to prevent OutOfMemoryError
+                int maxHeight = Math.min(contentHeight, 10000);
+                
                 // Create bitmap for full page
-                Bitmap bitmap = Bitmap.createBitmap(webViewWidth, contentHeight, Bitmap.Config.ARGB_8888);
+                Bitmap bitmap = Bitmap.createBitmap(webViewWidth, maxHeight, Bitmap.Config.ARGB_8888);
                 Canvas canvas = new Canvas(bitmap);
                 
-                // Save current scroll position
-                int scrollX = webView.getScrollX();
-                int scrollY = webView.getScrollY();
-                
-                // Scroll to top and draw
-                webView.scrollTo(0, 0);
+                // Draw the webView content directly without scrolling
+                // This avoids visible flickering
                 webView.draw(canvas);
-                
-                // Restore scroll position
-                webView.scrollTo(scrollX, scrollY);
                 
                 String base64 = bitmapToBase64(bitmap);
                 bitmap.recycle();
@@ -733,6 +732,21 @@ public class JsBridge {
     public void saveToGallery(String base64) {
         activity.runOnUiThread(() -> {
             try {
+                // Check permission for Android 9 and below
+                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+                    if (activity.checkSelfPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                            != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                        // Permission not granted
+                        if (activity instanceof MainActivity) {
+                            JSONObject response = new JSONObject();
+                            response.put("status", "error");
+                            response.put("message", "需要存储权限才能保存图片");
+                            ((MainActivity) activity).executeJsCallback("_saveGalleryCallback", response.toString());
+                        }
+                        return;
+                    }
+                }
+                
                 // Remove data:image/xxx;base64, prefix if present
                 String pureBase64 = base64;
                 if (base64.contains(",")) {

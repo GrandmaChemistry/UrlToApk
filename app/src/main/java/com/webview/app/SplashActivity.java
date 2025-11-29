@@ -20,13 +20,12 @@ import java.io.InputStream;
 
 public class SplashActivity extends AppCompatActivity {
 
-    private static final long SPLASH_DISPLAY_TIME = 1000; // 1 second display after WebView loads
     private static final long FADE_OUT_DURATION = 500; // 500ms fade out
+    private static final long MAX_SPLASH_DURATION = 3000; // Maximum 3 seconds
 
     private ImageView splashImage;
     private LinearLayout defaultSplashContainer;
     private ConstraintLayout splashContainer;
-    private boolean hasSplashImage = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -59,11 +58,9 @@ public class SplashActivity extends AppCompatActivity {
                 splashImage.setImageBitmap(bitmap);
                 splashImage.setVisibility(View.VISIBLE);
                 defaultSplashContainer.setVisibility(View.GONE);
-                hasSplashImage = true;
             }
         } catch (Exception e) {
             // No custom splash image, use default (app icon)
-            hasSplashImage = false;
             splashImage.setVisibility(View.GONE);
             defaultSplashContainer.setVisibility(View.VISIBLE);
         }
@@ -74,11 +71,8 @@ public class SplashActivity extends AppCompatActivity {
         intent.putExtra("FROM_SPLASH", true);
         startActivity(intent);
         
-        // Don't finish yet - will be finished when MainActivity signals ready
-        // For now, add a fallback timer
-        new Handler(Looper.getMainLooper()).postDelayed(() -> {
-            fadeOutAndFinish();
-        }, 3000); // Maximum 3 seconds splash display
+        // Fallback timer - finish splash after max duration
+        new Handler(Looper.getMainLooper()).postDelayed(this::fadeOutAndFinish, MAX_SPLASH_DURATION);
     }
 
     public void fadeOutAndFinish() {

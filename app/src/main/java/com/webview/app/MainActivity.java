@@ -44,6 +44,8 @@ import com.google.android.gms.location.Priority;
 
 import org.json.JSONObject;
 
+import java.util.concurrent.atomic.AtomicBoolean;
+
 public class MainActivity extends AppCompatActivity {
 
     private static final int LOCATION_PERMISSION_REQUEST = 1001;
@@ -405,13 +407,12 @@ public class MainActivity extends AppCompatActivity {
 
         // Create a timeout handler
         final android.os.Handler timeoutHandler = new android.os.Handler(Looper.getMainLooper());
-        final boolean[] locationReceived = {false};
+        final AtomicBoolean locationReceived = new AtomicBoolean(false);
         
         LocationCallback locationCallback = new LocationCallback() {
             @Override
             public void onLocationResult(@NonNull LocationResult locationResult) {
-                if (locationReceived[0]) return; // Already handled
-                locationReceived[0] = true;
+                if (locationReceived.getAndSet(true)) return; // Already handled
                 timeoutHandler.removeCallbacksAndMessages(null);
                 
                 Location location = locationResult.getLastLocation();
@@ -427,8 +428,7 @@ public class MainActivity extends AppCompatActivity {
         // Set timeout for location request (15 seconds)
         final LocationCallback finalLocationCallback = locationCallback;
         timeoutHandler.postDelayed(() -> {
-            if (!locationReceived[0]) {
-                locationReceived[0] = true;
+            if (!locationReceived.getAndSet(true)) {
                 fusedLocationClient.removeLocationUpdates(finalLocationCallback);
                 sendLocationErrorToJs("error", "获取位置超时，请确保设备在室外或靠近窗户");
             }
@@ -437,17 +437,15 @@ public class MainActivity extends AppCompatActivity {
         // First try to get last known location
         fusedLocationClient.getLastLocation()
                 .addOnSuccessListener(this, location -> {
-                    if (location != null && !locationReceived[0]) {
-                        locationReceived[0] = true;
+                    if (location != null && !locationReceived.getAndSet(true)) {
                         timeoutHandler.removeCallbacksAndMessages(null);
                         sendLocationToJs(location, "success");
-                    } else if (!locationReceived[0]) {
+                    } else if (!locationReceived.get()) {
                         // Request fresh location
                         try {
                             fusedLocationClient.requestLocationUpdates(locationRequest, finalLocationCallback, Looper.getMainLooper());
                         } catch (Exception e) {
-                            if (!locationReceived[0]) {
-                                locationReceived[0] = true;
+                            if (!locationReceived.getAndSet(true)) {
                                 timeoutHandler.removeCallbacksAndMessages(null);
                                 sendLocationErrorToJs("error", "请求位置更新失败: " + e.getMessage());
                             }
@@ -455,13 +453,12 @@ public class MainActivity extends AppCompatActivity {
                     }
                 })
                 .addOnFailureListener(e -> {
-                    if (!locationReceived[0]) {
+                    if (!locationReceived.get()) {
                         // Request fresh location on failure
                         try {
                             fusedLocationClient.requestLocationUpdates(locationRequest, finalLocationCallback, Looper.getMainLooper());
                         } catch (Exception ex) {
-                            if (!locationReceived[0]) {
-                                locationReceived[0] = true;
+                            if (!locationReceived.getAndSet(true)) {
                                 timeoutHandler.removeCallbacksAndMessages(null);
                                 sendLocationErrorToJs("error", "请求位置更新失败: " + ex.getMessage());
                             }
