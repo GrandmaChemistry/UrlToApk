@@ -522,43 +522,13 @@ public class JsBridge {
                 // Limit the height to prevent OutOfMemoryError
                 int maxHeight = Math.min(contentHeight, 10000);
                 
-                // Save original scroll position
-                final int originalScrollY = webView.getScrollY();
-                
                 // Create bitmap for full page
                 Bitmap bitmap = Bitmap.createBitmap(webViewWidth, maxHeight, Bitmap.Config.ARGB_8888);
                 Canvas canvas = new Canvas(bitmap);
                 
-                // Translate canvas to capture from top
-                canvas.translate(0, -originalScrollY);
-                
-                // Temporarily scroll to top and draw full content
-                webView.scrollTo(0, 0);
-                
-                // Draw the entire content by using the capturePicture method approach
-                // First, we need to use JavaScript to get the actual full page content
-                // For now, we'll use a workaround by drawing at different scroll positions
-                
-                int currentHeight = 0;
-                int viewHeight = webView.getHeight();
-                
-                while (currentHeight < maxHeight) {
-                    webView.scrollTo(0, currentHeight);
-                    // Need to wait for scroll to complete
-                    try {
-                        Thread.sleep(50);
-                    } catch (InterruptedException ignored) {}
-                    
-                    canvas.save();
-                    canvas.translate(0, currentHeight);
-                    webView.draw(canvas);
-                    canvas.restore();
-                    
-                    currentHeight += viewHeight;
-                }
-                
-                // Restore original scroll position
-                webView.scrollTo(0, originalScrollY);
+                // Draw the entire WebView content by directly using draw()
+                // WebView.draw() will render the entire content at the correct scale
+                webView.draw(canvas);
                 
                 String base64 = bitmapToBase64(bitmap);
                 bitmap.recycle();
@@ -661,9 +631,21 @@ public class JsBridge {
             // Device unique identifier (Android ID)
             try {
                 String androidId = Settings.Secure.getString(activity.getContentResolver(), Settings.Secure.ANDROID_ID);
-                info.put("deviceId", androidId);
+                if (androidId != null && !androidId.isEmpty()) {
+                    info.put("deviceId", androidId);
+                } else {
+                    // Fallback to a combination of device properties (without deprecated Build.SERIAL)
+                    String fallbackId = Build.BRAND + "-" + Build.MODEL + "-" + Build.FINGERPRINT.hashCode();
+                    info.put("deviceId", fallbackId);
+                }
             } catch (Exception e) {
-                info.put("deviceId", JSONObject.NULL);
+                // Last resort fallback using device properties
+                try {
+                    String fallbackId = Build.BRAND + "-" + Build.MODEL + "-" + Build.FINGERPRINT.hashCode();
+                    info.put("deviceId", fallbackId);
+                } catch (Exception ex) {
+                    info.put("deviceId", JSONObject.NULL);
+                }
             }
             
             // Package name

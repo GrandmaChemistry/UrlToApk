@@ -25,7 +25,6 @@ import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
-import android.widget.FrameLayout;
 import android.widget.ProgressBar;
 import android.widget.Toast;
 
@@ -637,7 +636,7 @@ public class MainActivity extends AppCompatActivity {
             if (exitToast != null) {
                 exitToast.cancel();
             }
-            exitToast = Toast.makeText(this, "再按一次退出应用", Toast.LENGTH_SHORT);
+            exitToast = Toast.makeText(this, R.string.exit_toast_message, Toast.LENGTH_SHORT);
             exitToast.setGravity(Gravity.BOTTOM, 0, 100);
             exitToast.show();
         }
