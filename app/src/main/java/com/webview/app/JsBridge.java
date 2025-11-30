@@ -153,6 +153,22 @@ public class JsBridge {
     }
 
     @JavascriptInterface
+    public String getClipboardContent() {
+        ClipboardManager clipboard = (ClipboardManager) activity.getSystemService(Context.CLIPBOARD_SERVICE);
+        if (clipboard != null && clipboard.hasPrimaryClip()) {
+            ClipData clipData = clipboard.getPrimaryClip();
+            if (clipData != null && clipData.getItemCount() > 0) {
+                ClipData.Item item = clipData.getItemAt(0);
+                CharSequence text = item.getText();
+                if (text != null) {
+                    return text.toString();
+                }
+            }
+        }
+        return "";
+    }
+
+    @JavascriptInterface
     public void openUrl(String url) {
         activity.runOnUiThread(() -> {
             try {
@@ -461,12 +477,10 @@ public class JsBridge {
     public void takeScreenshot() {
         activity.runOnUiThread(() -> {
             try {
-                View view = activity.getWindow().getDecorView().getRootView();
-                
-                // Use draw method instead of deprecated drawing cache
-                Bitmap bitmap = Bitmap.createBitmap(view.getWidth(), view.getHeight(), Bitmap.Config.ARGB_8888);
+                // Only capture WebView content, not status bar or navigation bar
+                Bitmap bitmap = Bitmap.createBitmap(webView.getWidth(), webView.getHeight(), Bitmap.Config.ARGB_8888);
                 Canvas canvas = new Canvas(bitmap);
-                view.draw(canvas);
+                webView.draw(canvas);
                 
                 String base64 = bitmapToBase64(bitmap);
                 bitmap.recycle();
@@ -512,8 +526,8 @@ public class JsBridge {
                 Bitmap bitmap = Bitmap.createBitmap(webViewWidth, maxHeight, Bitmap.Config.ARGB_8888);
                 Canvas canvas = new Canvas(bitmap);
                 
-                // Draw the webView content directly without scrolling
-                // This avoids visible flickering
+                // Draw the entire WebView content by directly using draw()
+                // WebView.draw() will render the entire content at the correct scale
                 webView.draw(canvas);
                 
                 String base64 = bitmapToBase64(bitmap);
@@ -617,9 +631,21 @@ public class JsBridge {
             // Device unique identifier (Android ID)
             try {
                 String androidId = Settings.Secure.getString(activity.getContentResolver(), Settings.Secure.ANDROID_ID);
-                info.put("deviceId", androidId);
+                if (androidId != null && !androidId.isEmpty()) {
+                    info.put("deviceId", androidId);
+                } else {
+                    // Fallback to a combination of device properties (without deprecated Build.SERIAL)
+                    String fallbackId = Build.BRAND + "-" + Build.MODEL + "-" + Build.FINGERPRINT.hashCode();
+                    info.put("deviceId", fallbackId);
+                }
             } catch (Exception e) {
-                info.put("deviceId", JSONObject.NULL);
+                // Last resort fallback using device properties
+                try {
+                    String fallbackId = Build.BRAND + "-" + Build.MODEL + "-" + Build.FINGERPRINT.hashCode();
+                    info.put("deviceId", fallbackId);
+                } catch (Exception ex) {
+                    info.put("deviceId", JSONObject.NULL);
+                }
             }
             
             // Package name

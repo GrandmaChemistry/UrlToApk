@@ -9,7 +9,9 @@ import android.graphics.Color;
 import android.location.Location;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Handler;
 import android.os.Looper;
+import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.Window;
@@ -51,7 +53,7 @@ public class MainActivity extends AppCompatActivity {
     private static final int LOCATION_PERMISSION_REQUEST = 1001;
     private static final long LOCATION_UPDATE_INTERVAL = 10000; // 10 seconds
     private static final long LOCATION_MIN_UPDATE_INTERVAL = 5000; // 5 seconds
-    private static final long BACK_PRESS_EXIT_INTERVAL = 1000; // 1 second for double tap exit
+    private static final long BACK_PRESS_EXIT_INTERVAL = 500; // 0.5 second for double tap exit (changed from 1 second)
 
     private WebView webView;
     private ProgressBar progressBar;
@@ -62,6 +64,9 @@ public class MainActivity extends AppCompatActivity {
     private Toast exitToast;
     private boolean keyListenerEnabled = false;
     private boolean exitListenerEnabled = false;
+    private boolean isFromSplash = false;
+    private boolean pageLoadComplete = false;
+    private Handler progressHandler = new Handler(Looper.getMainLooper());
 
     private final ActivityResultLauncher<Intent> fileChooserLauncher = registerForActivityResult(
             new ActivityResultContracts.StartActivityForResult(),
@@ -119,6 +124,9 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         
+        // Check if launched from splash screen
+        isFromSplash = getIntent().getBooleanExtra("FROM_SPLASH", false);
+        
         setThemeColor();
         setContentView(R.layout.activity_main);
 
@@ -126,7 +134,21 @@ public class MainActivity extends AppCompatActivity {
 
         initViews();
         initWebView();
-        loadUrl();
+        
+        // Restore state if savedInstanceState is not null
+        if (savedInstanceState != null) {
+            webView.restoreState(savedInstanceState);
+        } else {
+            loadUrl();
+        }
+    }
+    
+    @Override
+    protected void onSaveInstanceState(@NonNull Bundle outState) {
+        super.onSaveInstanceState(outState);
+        if (webView != null) {
+            webView.saveState(outState);
+        }
     }
 
     private void setThemeColor() {
@@ -237,13 +259,18 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onPageStarted(WebView view, String url, Bitmap favicon) {
                 super.onPageStarted(view, url, favicon);
-                progressBar.setVisibility(View.VISIBLE);
+                pageLoadComplete = false;
+                showProgressBar();
             }
 
             @Override
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
-                progressBar.setVisibility(View.GONE);
+                pageLoadComplete = true;
+                hideProgressBar();
+                
+                // Notify SplashActivity that page load is complete
+                SplashActivity.onWebViewLoadComplete();
                 
                 // Inject JS Bridge helper
                 injectJsBridgeHelper();
@@ -255,6 +282,16 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onProgressChanged(WebView view, int newProgress) {
                 progressBar.setProgress(newProgress);
+                
+                // Ensure progress bar is visible while loading
+                if (newProgress < 100 && !pageLoadComplete) {
+                    showProgressBar();
+                }
+                
+                // Hide progress bar when complete
+                if (newProgress >= 100) {
+                    hideProgressBar();
+                }
             }
 
             @Override
@@ -292,6 +329,7 @@ public class MainActivity extends AppCompatActivity {
                 "  getExtendedDeviceInfo: function() { return JSON.parse(AndroidBridge.getExtendedDeviceInfo()); }," +
                 "  getNetworkType: function() { return AndroidBridge.getNetworkType(); }," +
                 "  copyToClipboard: function(text) { AndroidBridge.copyToClipboard(text); }," +
+                "  getClipboardContent: function() { return AndroidBridge.getClipboardContent(); }," +
                 "  openUrl: function(url) { AndroidBridge.openUrl(url); }," +
                 "  share: function(title, text, url) { AndroidBridge.share(title, text, url); }," +
                 "  scanQRCode: function(callback) { window._qrCallback = callback; AndroidBridge.scanQRCode(); }," +
@@ -529,6 +567,12 @@ public class MainActivity extends AppCompatActivity {
         }
         
         if (keyCode == KeyEvent.KEYCODE_BACK) {
+            // In fullscreen mode, directly exit the app instead of exiting fullscreen first
+            if (jsBridge != null && jsBridge.isFullscreenMode()) {
+                handleBackExit();
+                return true;
+            }
+            
             if (webView.canGoBack()) {
                 webView.goBack();
                 return true;
@@ -577,7 +621,7 @@ public class MainActivity extends AppCompatActivity {
     private void handleBackExit() {
         long currentTime = System.currentTimeMillis();
         if (currentTime - lastBackPressTime <= BACK_PRESS_EXIT_INTERVAL) {
-            // Double tap within 1 second, exit the app
+            // Double tap within 0.5 seconds, exit the app
             if (exitToast != null) {
                 exitToast.cancel();
             }
@@ -587,12 +631,13 @@ public class MainActivity extends AppCompatActivity {
             }
             finish();
         } else {
-            // First tap, show toast message
+            // First tap, show toast message at bottom
             lastBackPressTime = currentTime;
             if (exitToast != null) {
                 exitToast.cancel();
             }
-            exitToast = Toast.makeText(this, "再按一次退出应用", Toast.LENGTH_SHORT);
+            exitToast = Toast.makeText(this, R.string.exit_toast_message, Toast.LENGTH_SHORT);
+            exitToast.setGravity(Gravity.BOTTOM, 0, 100);
             exitToast.show();
         }
     }
@@ -625,6 +670,22 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
+    private void showProgressBar() {
+        progressHandler.removeCallbacksAndMessages(null);
+        if (progressBar.getVisibility() != View.VISIBLE) {
+            progressBar.setVisibility(View.VISIBLE);
+        }
+    }
+
+    private void hideProgressBar() {
+        // Delay hiding progress bar slightly to ensure smooth transition
+        progressHandler.removeCallbacksAndMessages(null);
+        progressHandler.postDelayed(() -> {
+            progressBar.setVisibility(View.GONE);
+            progressBar.setProgress(0);
+        }, 200);
+    }
+
     @Override
     protected void onResume() {
         super.onResume();
@@ -639,6 +700,9 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     protected void onDestroy() {
+        if (progressHandler != null) {
+            progressHandler.removeCallbacksAndMessages(null);
+        }
         if (webView != null) {
             webView.destroy();
         }
