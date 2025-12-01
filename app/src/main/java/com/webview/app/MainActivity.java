@@ -42,6 +42,8 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.constraintlayout.widget.ConstraintLayout;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
@@ -91,6 +93,7 @@ public class MainActivity extends AppCompatActivity {
     private static final long PROGRESS_HIDE_DELAY = 100; // 100ms delay before hiding
     private boolean progressVisible = false;
     private int statusBarHeight = 0;
+    private android.view.ViewPropertyAnimator currentProgressAnimation = null;
 
     // Splash screen fields
     private ConstraintLayout splashContainer;
@@ -386,11 +389,14 @@ public class MainActivity extends AppCompatActivity {
         progressContainer = findViewById(R.id.progressContainer);
         progressIndicator = findViewById(R.id.progressIndicator);
         
-        // Get status bar height for proper positioning
-        int resourceId = getResources().getIdentifier("status_bar_height", "dimen", "android");
-        if (resourceId > 0) {
-            statusBarHeight = getResources().getDimensionPixelSize(resourceId);
-        }
+        // Get status bar height using WindowInsets API
+        ViewCompat.setOnApplyWindowInsetsListener(progressContainer, (v, insets) -> {
+            Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.statusBars());
+            statusBarHeight = systemBars.top;
+            // Update position after getting the correct insets
+            updateProgressBarPosition();
+            return insets;
+        });
         
         // Initialize progress bar as hidden (alpha=0) and set hardware layer for GPU optimization
         progressContainer.setAlpha(0f);
@@ -398,8 +404,8 @@ public class MainActivity extends AppCompatActivity {
         progressIndicator.setScaleX(0f);
         progressIndicator.setPivotX(0f);
         
-        // Update progress bar position based on current fullscreen state
-        updateProgressBarPosition();
+        // Request insets to be applied
+        progressContainer.requestApplyInsets();
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -996,13 +1002,19 @@ public class MainActivity extends AppCompatActivity {
     
     /**
      * Update progress bar scaleX with smooth animation
+     * Cancels any previous animation to prevent performance issues with rapid updates
      */
     private void updateProgress(int progress) {
+        // Cancel previous animation if running
+        if (currentProgressAnimation != null) {
+            currentProgressAnimation.cancel();
+        }
+        
         float scale = progress / 100f;
-        progressIndicator.animate()
+        currentProgressAnimation = progressIndicator.animate()
                 .scaleX(scale)
-                .setDuration(PROGRESS_ANIMATION_DURATION)
-                .start();
+                .setDuration(PROGRESS_ANIMATION_DURATION);
+        currentProgressAnimation.start();
     }
     
     /**
@@ -1013,7 +1025,9 @@ public class MainActivity extends AppCompatActivity {
     private void updateProgressBarPosition() {
         if (progressContainer == null) return;
         
+        // Check fullscreen state, default to non-fullscreen if jsBridge not yet initialized
         boolean isFullscreen = jsBridge != null && jsBridge.isFullscreenMode();
+        // In fullscreen mode, position at top; in normal mode, position below status bar
         float translationY = isFullscreen ? 0f : statusBarHeight;
         progressContainer.setTranslationY(translationY);
     }
