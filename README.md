@@ -45,10 +45,13 @@
 #### 首屏加载动画参数
 | 参数 | 说明 | 必填 | 默认值 |
 |------|------|------|--------|
-| 启用首屏图片 | 是否使用自定义首屏图片 | ❌ | false |
-| 首屏图片URL | 自定义首屏图片的 URL 地址 | ❌ | - |
+| 首屏图片URL | 自定义首屏图片的 URL 地址（填写则使用自定义图片，不填则使用应用图标） | ❌ | - |
 
-> **注意**: 如果未启用首屏图片，将自动使用应用图标作为首屏加载动画，显示圆角图标和应用名称。
+> **首屏图片逻辑说明**: 
+> - 如果填写了首屏图片URL，图片将铺满整个屏幕（无圆角），自适应屏幕大小
+> - 如果未填写首屏图片URL，将使用应用图标居中显示，白色背景，图标下方显示应用名称，图标圆角半径为10%
+> - 首屏图片至少显示2秒钟，WebView加载完成后500ms淡出动画
+> - 显示首屏期间禁止用户进行任何操作
 
 #### 证书信息参数
 | 参数 | 说明 | 默认值 |
@@ -71,18 +74,22 @@
 应用启动时会显示首屏加载动画，提升用户体验：
 
 ### 自定义首屏图片模式
-- 在 GitHub Action 中启用"启用首屏图片"选项
-- 提供首屏图片的 URL 地址
-- 图片会在打包时下载并嵌入应用资源
+- 在 GitHub Action 中提供首屏图片的 URL 地址
+- 图片会铺满整个屏幕，自适应屏幕大小，无圆角处理
 - 支持 PNG 和 JPEG 格式
-- WebView 加载完成后显示 1 秒，然后淡出进入主界面
+- 首屏图片在最上层显示，遮挡状态栏、导航栏和WebView
 
 ### 默认图标模式
-- 如未启用自定义首屏图片，自动使用应用图标
-- 图标带有圆角和阴影效果
+- 如未提供首屏图片URL，自动使用应用图标
+- 白色背景，图标居中显示
+- 图标圆角半径为图标宽度的10%
 - 图标下方显示应用名称
-- 整体居中显示，简洁大方的设计风格
-- WebView 加载完成后淡出进入主界面
+
+### 显示时间逻辑
+- 首屏图片至少显示2秒钟
+- WebView加载完成后，如果已超过2秒，则开始500ms淡出动画
+- 如果WebView加载未完成，首屏继续显示直到加载完成
+- 显示首屏期间，禁止用户进行任何操作（点击、滚动等）
 
 ## JavaScript Bridge API
 
@@ -352,23 +359,26 @@ NativeBridge.takeFullScreenshot(function(result) {
 ```
 
 #### saveToGallery(base64, callback)
-将 Base64 编码的图片保存到相册。
+将 Base64 编码的图片保存到相册。调用时会自动获取存储权限。
 
 ```javascript
 // 直接保存 Base64 图片
 var base64Image = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
 NativeBridge.saveToGallery(base64Image, function(result) {
-  if (result.status === 'success') {
-    console.log('保存成功:', result.message);
+  if (result.success) {
+    console.log('保存成功');
   } else {
     console.log('保存失败:', result.message);
+    // 可能的错误消息:
+    // - "用户拒绝存储权限"
+    // - "保存图片失败"
   }
 });
 
 // 支持带有 data:image/xxx;base64, 前缀
 var dataUrl = 'data:image/png;base64,iVBORw0KGgo...';
 NativeBridge.saveToGallery(dataUrl, function(result) {
-  console.log(result.message);
+  console.log(result.success ? '成功' : result.message);
 });
 ```
 
@@ -388,6 +398,33 @@ NativeBridge.openSystemSettings();
 
 ```javascript
 NativeBridge.openAppSettings();
+```
+
+#### getGrantedPermissions()
+获取当前应用已获取的权限列表。返回危险权限和普通权限两个分类。
+
+```javascript
+var result = NativeBridge.getGrantedPermissions();
+if (result.status === 'success') {
+  // 危险权限（需要用户授权）
+  console.log('危险权限:', result.dangerousPermissions);
+  // 可能包括: CAMERA, ACCESS_FINE_LOCATION, ACCESS_COARSE_LOCATION, 
+  // WRITE_EXTERNAL_STORAGE, READ_EXTERNAL_STORAGE, READ_MEDIA_IMAGES (Android 13+)
+  
+  // 普通权限（自动授权）
+  console.log('普通权限:', result.normalPermissions);
+  // 包括: VIBRATE, INTERNET, ACCESS_NETWORK_STATE
+  
+  // 所有权限（向后兼容）
+  console.log('所有权限:', result.permissions);
+  
+  // 检查是否有某个权限
+  if (result.dangerousPermissions.includes('CAMERA')) {
+    console.log('相机权限已授权');
+  }
+} else {
+  console.log('获取权限列表失败:', result.message);
+}
 ```
 
 ---
@@ -741,8 +778,9 @@ NativeBridge.enableBackButton(false); // 禁用
 1. **首屏加载动画优化**
    - 修复首屏不显示的问题，确保首屏在应用启动时正常显示
    - 添加淡入淡出效果，提供更流畅的视觉体验
-   - 首屏在网页加载完毕后显示 1 秒，然后淡出进入主界面
-   - 首屏显示时隐藏顶部状态栏，进入主界面后恢复显示
+   - 首屏至少显示2秒钟，WebView加载完成后500ms淡出动画
+   - 显示首屏期间禁止用户操作
+   - 首屏在最上层显示，遮挡状态栏、导航栏、webview
 
 2. **进度条优化**
    - 修复进度条显示不正常的问题，确保正确反映网页加载进度
@@ -758,14 +796,25 @@ NativeBridge.enableBackButton(false); // 禁用
 
 5. **返回键二次确认**
    - 改用 Toast 提示方式，显示"再按一次退出应用"
-   - 在 0.5 秒内再次点击返回键即可退出应用
-   - Toast 在底部显示
+   - 在 1 秒内再次点击返回键即可退出应用
+   - Toast 在底部显示，持续时间1秒
 
 6. **截图功能改进**
-   - 普通截图不再包含状态栏和导航栏，只截取应用内容区域
+   - 普通截图现在正确截取当前屏幕可见内容（不再从WebView顶部开始）
    - 全屏截图能够正确截取包括不可见滚动区域的完整内容
+   - 状态栏和导航栏不会被截取
 
-7. **新增 API**
+7. **位置获取优化**
+   - 增加重试机制，10秒钟无法获取位置则提示超时
+   - 超时提示消息更加简洁
+
+8. **保存图片到相册优化**
+   - 自动请求存储权限
+   - 用户拒绝授权时返回明确的错误信息"用户拒绝存储权限"
+   - 保存失败时返回"保存图片失败"
+
+9. **新增 API**
+   - `getGrantedPermissions()`: 获取当前应用已授权的权限列表
    - `getClipboardContent()`: 读取剪贴板中的文本内容
 
 ## 注意事项

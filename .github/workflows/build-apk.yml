@@ -26,13 +26,8 @@ on:
         description: '应用图标URL (公开可访问的PNG图片地址，可选)'
         required: false
         type: string
-      enable_splash_image:
-        description: '启用首屏图片 (true/false)'
-        required: false
-        type: boolean
-        default: false
       splash_image_url:
-        description: '首屏图片URL (启用首屏图片时必填，公开可访问的图片地址)'
+        description: '首屏图片URL (公开可访问的图片地址，可选，填写则使用该图片作为首屏，不填则使用应用图标)'
         required: false
         type: string
       cert_cn:
@@ -116,7 +111,7 @@ jobs:
           convert /tmp/app_icon.png -resize 192x192 app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png
 
       - name: Process splash image
-        if: ${{ github.event.inputs.enable_splash_image == 'true' && github.event.inputs.splash_image_url != '' }}
+        if: ${{ github.event.inputs.splash_image_url != '' }}
         run: |
           # Create assets directory if not exists
           mkdir -p app/src/main/assets
@@ -221,7 +216,7 @@ jobs:
             - **包名**: ${{ github.event.inputs.package_name }}
             - **URL**: ${{ github.event.inputs.app_url }}
             - **主题色**: ${{ github.event.inputs.theme_color }}
-            - **首屏图片**: ${{ github.event.inputs.enable_splash_image == 'true' && '已启用' || '未启用' }}
+            - **首屏图片**: ${{ github.event.inputs.splash_image_url != '' && '自定义图片' || '应用图标' }}
             - **签名状态**: 正式签名
             
             ## 证书信息
