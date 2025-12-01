@@ -477,9 +477,26 @@ public class JsBridge {
     public void takeScreenshot() {
         activity.runOnUiThread(() -> {
             try {
-                // Only capture WebView content, not status bar or navigation bar
-                Bitmap bitmap = Bitmap.createBitmap(webView.getWidth(), webView.getHeight(), Bitmap.Config.ARGB_8888);
+                // Capture only the visible portion of WebView (respects current scroll position)
+                // Using View.getDrawingCache() or creating bitmap from visible area
+                int webViewWidth = webView.getWidth();
+                int webViewHeight = webView.getHeight();
+                
+                if (webViewWidth <= 0 || webViewHeight <= 0) {
+                    throw new Exception("无法获取页面尺寸");
+                }
+                
+                // Create bitmap for visible area only
+                Bitmap bitmap = Bitmap.createBitmap(webViewWidth, webViewHeight, Bitmap.Config.ARGB_8888);
                 Canvas canvas = new Canvas(bitmap);
+                
+                // Save current scroll position
+                int scrollX = webView.getScrollX();
+                int scrollY = webView.getScrollY();
+                
+                // Translate canvas to account for scroll position
+                // This ensures we capture what's currently visible, not from the top
+                canvas.translate(-scrollX, -scrollY);
                 webView.draw(canvas);
                 
                 String base64 = bitmapToBase64(bitmap);
@@ -514,6 +531,7 @@ public class JsBridge {
                 float scale = webView.getScale();
                 int contentHeight = (int) (webView.getContentHeight() * scale);
                 int webViewWidth = webView.getWidth();
+                int webViewHeight = webView.getHeight();
                 
                 if (contentHeight <= 0 || webViewWidth <= 0) {
                     throw new Exception("无法获取页面尺寸");
@@ -522,13 +540,49 @@ public class JsBridge {
                 // Limit the height to prevent OutOfMemoryError
                 int maxHeight = Math.min(contentHeight, 10000);
                 
+                // Save current scroll position to restore later
+                int originalScrollX = webView.getScrollX();
+                int originalScrollY = webView.getScrollY();
+                
+                // Enable software layer for proper rendering of off-screen content
+                int originalLayerType = webView.getLayerType();
+                webView.setLayerType(View.LAYER_TYPE_SOFTWARE, null);
+                
                 // Create bitmap for full page
                 Bitmap bitmap = Bitmap.createBitmap(webViewWidth, maxHeight, Bitmap.Config.ARGB_8888);
                 Canvas canvas = new Canvas(bitmap);
                 
-                // Draw the entire WebView content by directly using draw()
-                // WebView.draw() will render the entire content at the correct scale
-                webView.draw(canvas);
+                // We need to capture the entire content by iterating through sections
+                // and drawing them to the bitmap
+                int capturedHeight = 0;
+                int sectionHeight = webViewHeight;
+                
+                while (capturedHeight < maxHeight) {
+                    // Scroll to the current section
+                    webView.scrollTo(0, capturedHeight);
+                    
+                    // Wait for the scroll to take effect
+                    // Create a section bitmap
+                    int remainingHeight = maxHeight - capturedHeight;
+                    int currentSectionHeight = Math.min(sectionHeight, remainingHeight);
+                    
+                    // Save canvas state
+                    canvas.save();
+                    // Translate canvas to the correct position
+                    canvas.translate(0, capturedHeight);
+                    // Clip to current section
+                    canvas.clipRect(0, 0, webViewWidth, currentSectionHeight);
+                    // Draw WebView (it will draw from its current scroll position)
+                    webView.draw(canvas);
+                    // Restore canvas state
+                    canvas.restore();
+                    
+                    capturedHeight += currentSectionHeight;
+                }
+                
+                // Restore original scroll position and layer type
+                webView.scrollTo(originalScrollX, originalScrollY);
+                webView.setLayerType(originalLayerType, null);
                 
                 String base64 = bitmapToBase64(bitmap);
                 bitmap.recycle();
@@ -762,17 +816,38 @@ public class JsBridge {
                 if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
                     if (activity.checkSelfPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
                             != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                        // Permission not granted
+                        // Request permission
                         if (activity instanceof MainActivity) {
-                            JSONObject response = new JSONObject();
-                            response.put("status", "error");
-                            response.put("message", "需要存储权限才能保存图片");
-                            ((MainActivity) activity).executeJsCallback("_saveGalleryCallback", response.toString());
+                            ((MainActivity) activity).requestStoragePermissionForSave(base64);
                         }
                         return;
                     }
                 }
                 
+                // Permission granted or not needed, proceed with saving
+                saveToGalleryInternal(base64);
+                
+            } catch (Exception e) {
+                try {
+                    if (activity instanceof MainActivity) {
+                        JSONObject response = new JSONObject();
+                        response.put("success", false);
+                        response.put("message", "保存图片失败");
+                        ((MainActivity) activity).executeJsCallback("_saveGalleryCallback", response.toString());
+                    }
+                } catch (JSONException ex) {
+                    ex.printStackTrace();
+                }
+            }
+        });
+    }
+    
+    /**
+     * Internal method to save image to gallery (called after permission is granted)
+     */
+    public void saveToGalleryInternal(String base64) {
+        activity.runOnUiThread(() -> {
+            try {
                 // Remove data:image/xxx;base64, prefix if present
                 String pureBase64 = base64;
                 if (base64.contains(",")) {
@@ -825,11 +900,10 @@ public class JsBridge {
                 if (activity instanceof MainActivity) {
                     JSONObject response = new JSONObject();
                     if (saved) {
-                        response.put("status", "success");
-                        response.put("message", "图片已保存到相册");
+                        response.put("success", true);
                     } else {
-                        response.put("status", "error");
-                        response.put("message", "保存失败");
+                        response.put("success", false);
+                        response.put("message", "保存图片失败");
                     }
                     ((MainActivity) activity).executeJsCallback("_saveGalleryCallback", response.toString());
                 }
@@ -838,8 +912,8 @@ public class JsBridge {
                 try {
                     if (activity instanceof MainActivity) {
                         JSONObject response = new JSONObject();
-                        response.put("status", "error");
-                        response.put("message", e.getMessage());
+                        response.put("success", false);
+                        response.put("message", "保存图片失败");
                         ((MainActivity) activity).executeJsCallback("_saveGalleryCallback", response.toString());
                     }
                 } catch (JSONException ex) {
@@ -852,5 +926,50 @@ public class JsBridge {
     @JavascriptInterface
     public void getContacts() {
         Toast.makeText(activity, "获取联系人需要申请权限", Toast.LENGTH_SHORT).show();
+    }
+    
+    /**
+     * Get list of granted permissions for this app
+     * @return JSON string containing an array of granted permissions
+     */
+    @JavascriptInterface
+    public String getGrantedPermissions() {
+        JSONObject result = new JSONObject();
+        try {
+            org.json.JSONArray grantedPermissions = new org.json.JSONArray();
+            
+            // List of permissions to check
+            String[] permissionsToCheck = {
+                android.Manifest.permission.CAMERA,
+                android.Manifest.permission.ACCESS_FINE_LOCATION,
+                android.Manifest.permission.ACCESS_COARSE_LOCATION,
+                android.Manifest.permission.WRITE_EXTERNAL_STORAGE,
+                android.Manifest.permission.READ_EXTERNAL_STORAGE,
+                android.Manifest.permission.VIBRATE,
+                android.Manifest.permission.INTERNET,
+                android.Manifest.permission.ACCESS_NETWORK_STATE
+            };
+            
+            for (String permission : permissionsToCheck) {
+                if (androidx.core.content.ContextCompat.checkSelfPermission(activity, permission) 
+                        == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                    // Extract simple permission name from full path
+                    String simpleName = permission.substring(permission.lastIndexOf('.') + 1);
+                    grantedPermissions.put(simpleName);
+                }
+            }
+            
+            result.put("status", "success");
+            result.put("permissions", grantedPermissions);
+            
+        } catch (Exception e) {
+            try {
+                result.put("status", "error");
+                result.put("message", e.getMessage());
+            } catch (JSONException ex) {
+                ex.printStackTrace();
+            }
+        }
+        return result.toString();
     }
 }

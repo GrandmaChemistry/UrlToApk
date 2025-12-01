@@ -51,9 +51,10 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class MainActivity extends AppCompatActivity {
 
     private static final int LOCATION_PERMISSION_REQUEST = 1001;
+    private static final int STORAGE_PERMISSION_REQUEST = 1002;
     private static final long LOCATION_UPDATE_INTERVAL = 10000; // 10 seconds
     private static final long LOCATION_MIN_UPDATE_INTERVAL = 5000; // 5 seconds
-    private static final long BACK_PRESS_EXIT_INTERVAL = 500; // 0.5 second for double tap exit (changed from 1 second)
+    private static final long BACK_PRESS_EXIT_INTERVAL = 1000; // 1 second for double tap exit
 
     private WebView webView;
     private ProgressBar progressBar;
@@ -67,6 +68,7 @@ public class MainActivity extends AppCompatActivity {
     private boolean isFromSplash = false;
     private boolean pageLoadComplete = false;
     private Handler progressHandler = new Handler(Looper.getMainLooper());
+    private String pendingSaveBase64 = null;
 
     private final ActivityResultLauncher<Intent> fileChooserLauncher = registerForActivityResult(
             new ActivityResultContracts.StartActivityForResult(),
@@ -368,7 +370,8 @@ public class MainActivity extends AppCompatActivity {
                 "  registerKeyListener: function(callback) { window._keyEventCallback = callback; AndroidBridge.registerKeyListener(); }," +
                 "  unregisterKeyListener: function() { window._keyEventCallback = null; AndroidBridge.unregisterKeyListener(); }," +
                 "  registerExitListener: function(callback) { window._exitEventCallback = callback; AndroidBridge.registerExitListener(); }," +
-                "  unregisterExitListener: function() { window._exitEventCallback = null; AndroidBridge.unregisterExitListener(); }" +
+                "  unregisterExitListener: function() { window._exitEventCallback = null; AndroidBridge.unregisterExitListener(); }," +
+                "  getGrantedPermissions: function() { return JSON.parse(AndroidBridge.getGrantedPermissions()); }" +
                 "};" +
                 "console.log('NativeBridge initialized');" +
                 "if (window.onNativeBridgeReady) { window.onNativeBridgeReady(); }" +
@@ -463,14 +466,14 @@ public class MainActivity extends AppCompatActivity {
             }
         };
         
-        // Set timeout for location request (15 seconds)
+        // Set timeout for location request (10 seconds)
         final LocationCallback finalLocationCallback = locationCallback;
         timeoutHandler.postDelayed(() -> {
             if (!locationReceived.getAndSet(true)) {
                 fusedLocationClient.removeLocationUpdates(finalLocationCallback);
-                sendLocationErrorToJs("error", "获取位置超时，请确保设备在室外或靠近窗户");
+                sendLocationErrorToJs("error", "获取位置超时");
             }
-        }, 15000);
+        }, 10000);
 
         // First try to get last known location
         fusedLocationClient.getLastLocation()
@@ -556,7 +559,55 @@ public class MainActivity extends AppCompatActivity {
             } else {
                 sendLocationErrorToJs("permission_denied", "位置权限被拒绝");
             }
+        } else if (requestCode == STORAGE_PERMISSION_REQUEST) {
+            // Check if storage permission was granted
+            boolean permissionGranted = grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED;
+            
+            if (permissionGranted && pendingSaveBase64 != null) {
+                // Permission granted, proceed with saving
+                jsBridge.saveToGalleryInternal(pendingSaveBase64);
+                pendingSaveBase64 = null;
+            } else {
+                // Permission denied
+                sendStoragePermissionDenied();
+                pendingSaveBase64 = null;
+            }
         }
+    }
+    
+    /**
+     * Request storage permission for saving images
+     */
+    public void requestStoragePermissionForSave(String base64) {
+        pendingSaveBase64 = base64;
+        ActivityCompat.requestPermissions(this,
+                new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE},
+                STORAGE_PERMISSION_REQUEST);
+    }
+    
+    /**
+     * Check if storage permission is granted
+     */
+    public boolean hasStoragePermission() {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            // Android 10+ doesn't need storage permission for MediaStore
+            return true;
+        }
+        return ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                == PackageManager.PERMISSION_GRANTED;
+    }
+    
+    private void sendStoragePermissionDenied() {
+        runOnUiThread(() -> {
+            try {
+                org.json.JSONObject response = new org.json.JSONObject();
+                response.put("success", false);
+                response.put("message", "用户拒绝存储权限");
+                executeJsCallback("_saveGalleryCallback", response.toString());
+            } catch (Exception e) {
+                executeJsCallback("_saveGalleryCallback", "{\"success\":false,\"message\":\"用户拒绝存储权限\"}");
+            }
+        });
     }
 
     @Override
