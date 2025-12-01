@@ -168,6 +168,10 @@ jobs:
         run: |
           # Sanitize app name for filename
           SAFE_NAME=$(echo "${{ github.event.inputs.app_name }}" | tr ' ' '_' | tr -cd '[:alnum:]_-')
+          # Use default name if sanitized name is empty (e.g., for non-ASCII app names)
+          if [ -z "$SAFE_NAME" ]; then
+            SAFE_NAME="app-release"
+          fi
           
           # Find the unsigned APK
           UNSIGNED_APK="app/build/outputs/apk/release/app-release-unsigned.apk"
