@@ -29,9 +29,9 @@ import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
-import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -72,7 +72,8 @@ public class MainActivity extends AppCompatActivity {
     private static final long SPLASH_MAX_DURATION = 30000; // Maximum 30 seconds (fallback)
 
     private WebView webView;
-    private ProgressBar progressBar;
+    private FrameLayout progressContainer;
+    private View progressIndicator;
     private ValueCallback<Uri[]> filePathCallback;
     private JsBridge jsBridge;
     private FusedLocationProviderClient fusedLocationClient;
@@ -83,6 +84,13 @@ public class MainActivity extends AppCompatActivity {
     private boolean pageLoadComplete = false;
     private Handler progressHandler = new Handler(Looper.getMainLooper());
     private String pendingSaveBase64 = null;
+    
+    // Progress bar animation constants
+    private static final long PROGRESS_ANIMATION_DURATION = 150; // 150ms for progress updates
+    private static final long PROGRESS_FADE_OUT_DURATION = 200; // 200ms fade out
+    private static final long PROGRESS_HIDE_DELAY = 100; // 100ms delay before hiding
+    private boolean progressVisible = false;
+    private int statusBarHeight = 0;
 
     // Splash screen fields
     private ConstraintLayout splashContainer;
@@ -375,7 +383,23 @@ public class MainActivity extends AppCompatActivity {
 
     private void initViews() {
         webView = findViewById(R.id.webView);
-        progressBar = findViewById(R.id.progressBar);
+        progressContainer = findViewById(R.id.progressContainer);
+        progressIndicator = findViewById(R.id.progressIndicator);
+        
+        // Get status bar height for proper positioning
+        int resourceId = getResources().getIdentifier("status_bar_height", "dimen", "android");
+        if (resourceId > 0) {
+            statusBarHeight = getResources().getDimensionPixelSize(resourceId);
+        }
+        
+        // Initialize progress bar as hidden (alpha=0) and set hardware layer for GPU optimization
+        progressContainer.setAlpha(0f);
+        progressContainer.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+        progressIndicator.setScaleX(0f);
+        progressIndicator.setPivotX(0f);
+        
+        // Update progress bar position based on current fullscreen state
+        updateProgressBarPosition();
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -481,7 +505,7 @@ public class MainActivity extends AppCompatActivity {
         webView.setWebChromeClient(new WebChromeClient() {
             @Override
             public void onProgressChanged(WebView view, int newProgress) {
-                progressBar.setProgress(newProgress);
+                updateProgress(newProgress);
                 
                 // Ensure progress bar is visible while loading
                 if (newProgress < 100 && !pageLoadComplete) {
@@ -934,8 +958,15 @@ public class MainActivity extends AppCompatActivity {
         if (splashVisible) return;
         
         progressHandler.removeCallbacksAndMessages(null);
-        if (progressBar.getVisibility() != View.VISIBLE) {
-            progressBar.setVisibility(View.VISIBLE);
+        if (!progressVisible) {
+            progressVisible = true;
+            // Update position for current fullscreen state
+            updateProgressBarPosition();
+            // Fade in using alpha animation with hardware layer for GPU optimization
+            progressContainer.animate()
+                    .alpha(1f)
+                    .setDuration(PROGRESS_ANIMATION_DURATION)
+                    .start();
         }
     }
 
@@ -943,9 +974,55 @@ public class MainActivity extends AppCompatActivity {
         // Delay hiding progress bar slightly to ensure smooth transition
         progressHandler.removeCallbacksAndMessages(null);
         progressHandler.postDelayed(() -> {
-            progressBar.setVisibility(View.GONE);
-            progressBar.setProgress(0);
-        }, 200);
+            progressVisible = false;
+            // First animate progress to 100%, then fade out
+            progressIndicator.animate()
+                    .scaleX(1f)
+                    .setDuration(PROGRESS_ANIMATION_DURATION)
+                    .withEndAction(() -> {
+                        // Fade out the container
+                        progressContainer.animate()
+                                .alpha(0f)
+                                .setDuration(PROGRESS_FADE_OUT_DURATION)
+                                .withEndAction(() -> {
+                                    // Reset scaleX to 0 for next load
+                                    progressIndicator.setScaleX(0f);
+                                })
+                                .start();
+                    })
+                    .start();
+        }, PROGRESS_HIDE_DELAY);
+    }
+    
+    /**
+     * Update progress bar scaleX with smooth animation
+     */
+    private void updateProgress(int progress) {
+        float scale = progress / 100f;
+        progressIndicator.animate()
+                .scaleX(scale)
+                .setDuration(PROGRESS_ANIMATION_DURATION)
+                .start();
+    }
+    
+    /**
+     * Update progress bar position based on fullscreen mode
+     * In fullscreen mode, position at top (translationY=0)
+     * In normal mode, position below status bar
+     */
+    private void updateProgressBarPosition() {
+        if (progressContainer == null) return;
+        
+        boolean isFullscreen = jsBridge != null && jsBridge.isFullscreenMode();
+        float translationY = isFullscreen ? 0f : statusBarHeight;
+        progressContainer.setTranslationY(translationY);
+    }
+    
+    /**
+     * Called when fullscreen mode changes to update progress bar position
+     */
+    public void onFullscreenModeChanged() {
+        runOnUiThread(this::updateProgressBarPosition);
     }
 
     @Override

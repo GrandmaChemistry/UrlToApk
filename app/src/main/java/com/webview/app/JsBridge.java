@@ -764,6 +764,10 @@ public class JsBridge {
                 windowInsetsController.setSystemBarsBehavior(
                         WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
                 isFullscreen = true;
+                // Notify MainActivity about fullscreen mode change
+                if (activity instanceof MainActivity) {
+                    ((MainActivity) activity).onFullscreenModeChanged();
+                }
             } catch (Exception e) {
                 Toast.makeText(activity, "无法进入全屏模式", Toast.LENGTH_SHORT).show();
             }
@@ -779,6 +783,10 @@ public class JsBridge {
                         WindowCompat.getInsetsController(window, window.getDecorView());
                 windowInsetsController.show(WindowInsetsCompat.Type.systemBars());
                 isFullscreen = false;
+                // Notify MainActivity about fullscreen mode change
+                if (activity instanceof MainActivity) {
+                    ((MainActivity) activity).onFullscreenModeChanged();
+                }
             } catch (Exception e) {
                 Toast.makeText(activity, "无法退出全屏模式", Toast.LENGTH_SHORT).show();
             }

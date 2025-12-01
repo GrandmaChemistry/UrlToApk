@@ -11,16 +11,33 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
-    <!-- Progress bar floating over WebView content, not taking any space -->
-    <ProgressBar
-        android:id="@+id/progressBar"
-        style="?android:attr/progressBarStyleHorizontal"
+    <!-- Progress bar container floating over WebView content as overlay -->
+    <FrameLayout
+        android:id="@+id/progressContainer"
         android:layout_width="match_parent"
         android:layout_height="3dp"
         android:layout_gravity="top"
-        android:indeterminate="false"
-        android:max="100"
-        android:visibility="gone" />
+        android:alpha="0"
+        android:translationY="0dp"
+        android:elevation="4dp">
+
+        <!-- Background track -->
+        <View
+            android:id="@+id/progressBackground"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="#1A000000" />
+
+        <!-- Progress indicator using scaleX for smooth GPU animation -->
+        <View
+            android:id="@+id/progressIndicator"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@color/colorPrimary"
+            android:scaleX="0"
+            android:transformPivotX="0dp" />
+
+    </FrameLayout>
 
     <!-- Splash screen overlay - fullscreen, on top of everything including system bars -->
     <androidx.constraintlayout.widget.ConstraintLayout
