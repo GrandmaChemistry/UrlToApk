@@ -541,58 +541,70 @@ public class JsBridge {
                 int maxHeight = Math.min(contentHeight, 10000);
                 
                 // Save current scroll position to restore later
-                int originalScrollX = webView.getScrollX();
-                int originalScrollY = webView.getScrollY();
-                
-                // Enable software layer for proper rendering of off-screen content
-                int originalLayerType = webView.getLayerType();
-                webView.setLayerType(View.LAYER_TYPE_SOFTWARE, null);
+                final int originalScrollX = webView.getScrollX();
+                final int originalScrollY = webView.getScrollY();
                 
                 // Create bitmap for full page
-                Bitmap bitmap = Bitmap.createBitmap(webViewWidth, maxHeight, Bitmap.Config.ARGB_8888);
-                Canvas canvas = new Canvas(bitmap);
+                final Bitmap bitmap = Bitmap.createBitmap(webViewWidth, maxHeight, Bitmap.Config.ARGB_8888);
+                final Canvas canvas = new Canvas(bitmap);
                 
-                // We need to capture the entire content by iterating through sections
-                // and drawing them to the bitmap
-                int capturedHeight = 0;
-                int sectionHeight = webViewHeight;
+                // Use a recursive approach with post() to ensure rendering is complete
+                final int[] capturedHeight = {0};
+                final int sectionHeight = webViewHeight;
                 
-                while (capturedHeight < maxHeight) {
-                    // Scroll to the current section
-                    webView.scrollTo(0, capturedHeight);
-                    
-                    // Wait for the scroll to take effect
-                    // Create a section bitmap
-                    int remainingHeight = maxHeight - capturedHeight;
-                    int currentSectionHeight = Math.min(sectionHeight, remainingHeight);
-                    
-                    // Save canvas state
-                    canvas.save();
-                    // Translate canvas to the correct position
-                    canvas.translate(0, capturedHeight);
-                    // Clip to current section
-                    canvas.clipRect(0, 0, webViewWidth, currentSectionHeight);
-                    // Draw WebView (it will draw from its current scroll position)
-                    webView.draw(canvas);
-                    // Restore canvas state
-                    canvas.restore();
-                    
-                    capturedHeight += currentSectionHeight;
-                }
+                Runnable captureSection = new Runnable() {
+                    @Override
+                    public void run() {
+                        if (capturedHeight[0] >= maxHeight) {
+                            // All sections captured, restore and return result
+                            webView.scrollTo(originalScrollX, originalScrollY);
+                            
+                            String base64 = bitmapToBase64(bitmap);
+                            bitmap.recycle();
+                            
+                            if (activity instanceof MainActivity) {
+                                try {
+                                    JSONObject response = new JSONObject();
+                                    response.put("status", "success");
+                                    response.put("data", base64);
+                                    ((MainActivity) activity).executeJsCallback("_fullScreenshotCallback", response.toString());
+                                } catch (JSONException e) {
+                                    e.printStackTrace();
+                                }
+                            }
+                            return;
+                        }
+                        
+                        // Scroll to the current section
+                        webView.scrollTo(0, capturedHeight[0]);
+                        
+                        // Post to ensure scroll and rendering is complete before drawing
+                        webView.post(() -> {
+                            int remainingHeight = maxHeight - capturedHeight[0];
+                            int currentSectionHeight = Math.min(sectionHeight, remainingHeight);
+                            
+                            // Save canvas state
+                            canvas.save();
+                            // Translate canvas to the correct position
+                            canvas.translate(0, capturedHeight[0]);
+                            // Clip to current section
+                            canvas.clipRect(0, 0, webViewWidth, currentSectionHeight);
+                            // Draw WebView (it will draw from its current scroll position)
+                            webView.draw(canvas);
+                            // Restore canvas state
+                            canvas.restore();
+                            
+                            capturedHeight[0] += currentSectionHeight;
+                            
+                            // Continue to next section
+                            webView.post(this);
+                        });
+                    }
+                };
                 
-                // Restore original scroll position and layer type
-                webView.scrollTo(originalScrollX, originalScrollY);
-                webView.setLayerType(originalLayerType, null);
+                // Start capturing
+                captureSection.run();
                 
-                String base64 = bitmapToBase64(bitmap);
-                bitmap.recycle();
-                
-                if (activity instanceof MainActivity) {
-                    JSONObject response = new JSONObject();
-                    response.put("status", "success");
-                    response.put("data", base64);
-                    ((MainActivity) activity).executeJsCallback("_fullScreenshotCallback", response.toString());
-                }
             } catch (Exception e) {
                 try {
                     if (activity instanceof MainActivity) {
@@ -930,37 +942,69 @@ public class JsBridge {
     
     /**
      * Get list of granted permissions for this app
-     * @return JSON string containing an array of granted permissions
+     * @return JSON string containing arrays of dangerous and normal permissions
      */
     @JavascriptInterface
     public String getGrantedPermissions() {
         JSONObject result = new JSONObject();
         try {
-            org.json.JSONArray grantedPermissions = new org.json.JSONArray();
+            org.json.JSONArray dangerousPermissions = new org.json.JSONArray();
+            org.json.JSONArray normalPermissions = new org.json.JSONArray();
             
-            // List of permissions to check
-            String[] permissionsToCheck = {
+            // Dangerous permissions that require user consent
+            String[] dangerousPermissionsToCheck = {
                 android.Manifest.permission.CAMERA,
                 android.Manifest.permission.ACCESS_FINE_LOCATION,
                 android.Manifest.permission.ACCESS_COARSE_LOCATION,
                 android.Manifest.permission.WRITE_EXTERNAL_STORAGE,
-                android.Manifest.permission.READ_EXTERNAL_STORAGE,
+                android.Manifest.permission.READ_EXTERNAL_STORAGE
+            };
+            
+            // Add READ_MEDIA_IMAGES for Android 13+ (API 33+)
+            if (Build.VERSION.SDK_INT >= 33) {
+                dangerousPermissionsToCheck = new String[]{
+                    android.Manifest.permission.CAMERA,
+                    android.Manifest.permission.ACCESS_FINE_LOCATION,
+                    android.Manifest.permission.ACCESS_COARSE_LOCATION,
+                    "android.permission.READ_MEDIA_IMAGES"
+                };
+            }
+            
+            // Normal permissions that are automatically granted
+            String[] normalPermissionsToCheck = {
                 android.Manifest.permission.VIBRATE,
                 android.Manifest.permission.INTERNET,
                 android.Manifest.permission.ACCESS_NETWORK_STATE
             };
             
-            for (String permission : permissionsToCheck) {
+            for (String permission : dangerousPermissionsToCheck) {
                 if (androidx.core.content.ContextCompat.checkSelfPermission(activity, permission) 
                         == android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                    // Extract simple permission name from full path
                     String simpleName = permission.substring(permission.lastIndexOf('.') + 1);
-                    grantedPermissions.put(simpleName);
+                    dangerousPermissions.put(simpleName);
+                }
+            }
+            
+            for (String permission : normalPermissionsToCheck) {
+                if (androidx.core.content.ContextCompat.checkSelfPermission(activity, permission) 
+                        == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                    String simpleName = permission.substring(permission.lastIndexOf('.') + 1);
+                    normalPermissions.put(simpleName);
                 }
             }
             
             result.put("status", "success");
-            result.put("permissions", grantedPermissions);
+            result.put("dangerousPermissions", dangerousPermissions);
+            result.put("normalPermissions", normalPermissions);
+            // For backwards compatibility, also include combined list
+            org.json.JSONArray allPermissions = new org.json.JSONArray();
+            for (int i = 0; i < dangerousPermissions.length(); i++) {
+                allPermissions.put(dangerousPermissions.get(i));
+            }
+            for (int i = 0; i < normalPermissions.length(); i++) {
+                allPermissions.put(normalPermissions.get(i));
+            }
+            result.put("permissions", allPermissions);
             
         } catch (Exception e) {
             try {

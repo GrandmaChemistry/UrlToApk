@@ -401,24 +401,25 @@ NativeBridge.openAppSettings();
 ```
 
 #### getGrantedPermissions()
-获取当前应用已获取的权限列表。
+获取当前应用已获取的权限列表。返回危险权限和普通权限两个分类。
 
 ```javascript
 var result = NativeBridge.getGrantedPermissions();
 if (result.status === 'success') {
-  console.log('已授权的权限:', result.permissions);
-  // 可能的权限包括:
-  // - CAMERA
-  // - ACCESS_FINE_LOCATION
-  // - ACCESS_COARSE_LOCATION
-  // - WRITE_EXTERNAL_STORAGE
-  // - READ_EXTERNAL_STORAGE
-  // - VIBRATE
-  // - INTERNET
-  // - ACCESS_NETWORK_STATE
+  // 危险权限（需要用户授权）
+  console.log('危险权限:', result.dangerousPermissions);
+  // 可能包括: CAMERA, ACCESS_FINE_LOCATION, ACCESS_COARSE_LOCATION, 
+  // WRITE_EXTERNAL_STORAGE, READ_EXTERNAL_STORAGE, READ_MEDIA_IMAGES (Android 13+)
+  
+  // 普通权限（自动授权）
+  console.log('普通权限:', result.normalPermissions);
+  // 包括: VIBRATE, INTERNET, ACCESS_NETWORK_STATE
+  
+  // 所有权限（向后兼容）
+  console.log('所有权限:', result.permissions);
   
   // 检查是否有某个权限
-  if (result.permissions.includes('CAMERA')) {
+  if (result.dangerousPermissions.includes('CAMERA')) {
     console.log('相机权限已授权');
   }
 } else {
