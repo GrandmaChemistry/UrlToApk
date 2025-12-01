@@ -266,9 +266,6 @@ public class MainActivity extends AppCompatActivity {
             splashAppName.setText(BuildConfig.APP_NAME);
         }
 
-        // Disable all touch events during splash
-        splashContainer.setOnTouchListener((v, event) -> true);
-
         // Make splash visible
         splashContainer.setVisibility(View.VISIBLE);
         splashContainer.setAlpha(1f);
@@ -813,10 +810,6 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     public boolean dispatchTouchEvent(MotionEvent ev) {
-        // Block all touch events during splash screen
-        if (splashVisible) {
-            return true;
-        }
         return super.dispatchTouchEvent(ev);
     }
 
