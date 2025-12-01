@@ -28,8 +28,8 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:background="@color/white"
-        android:clickable="true"
-        android:focusable="true"
+        android:clickable="false"
+        android:focusable="false"
         android:fitsSystemWindows="false"
         android:visibility="visible">
 
@@ -58,12 +58,12 @@
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="parent">
 
-            <!-- App icon with rounded corners (radius = 10% of icon width = 12dp for 120dp icon) and shadow -->
+            <!-- App icon with rounded corners (radius = 10% of icon width = 12dp for 120dp icon), no shadow -->
             <androidx.cardview.widget.CardView
                 android:layout_width="120dp"
                 android:layout_height="120dp"
                 app:cardCornerRadius="12dp"
-                app:cardElevation="12dp"
+                app:cardElevation="0dp"
                 app:cardBackgroundColor="@android:color/transparent">
 
                 <ImageView

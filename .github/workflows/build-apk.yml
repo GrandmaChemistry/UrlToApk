@@ -21,7 +21,7 @@ on:
         description: '主题色 (例如: #2196F3)'
         required: false
         type: string
-        default: '#2196F3'
+        default: '#FFFFFF'
       app_icon_url:
         description: '应用图标URL (公开可访问的PNG图片地址，可选)'
         required: false
