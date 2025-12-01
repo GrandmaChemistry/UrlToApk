@@ -5,6 +5,7 @@ import android.annotation.SuppressLint;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.location.Location;
 import android.net.Uri;
@@ -13,9 +14,12 @@ import android.os.Handler;
 import android.os.Looper;
 import android.view.Gravity;
 import android.view.KeyEvent;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
+import android.view.animation.AlphaAnimation;
+import android.view.animation.Animation;
 import android.webkit.CookieManager;
 import android.webkit.GeolocationPermissions;
 import android.webkit.PermissionRequest;
@@ -25,16 +29,21 @@ import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.widget.ImageView;
+import android.widget.LinearLayout;
 import android.widget.ProgressBar;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.constraintlayout.widget.ConstraintLayout;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
 
 import com.google.android.gms.location.FusedLocationProviderClient;
@@ -46,6 +55,7 @@ import com.google.android.gms.location.Priority;
 
 import org.json.JSONObject;
 
+import java.io.InputStream;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class MainActivity extends AppCompatActivity {
@@ -56,6 +66,11 @@ public class MainActivity extends AppCompatActivity {
     private static final long LOCATION_MIN_UPDATE_INTERVAL = 5000; // 5 seconds
     private static final long BACK_PRESS_EXIT_INTERVAL = 1000; // 1 second for double tap exit
 
+    // Splash screen constants
+    private static final long SPLASH_FADE_OUT_DURATION = 500; // 500ms fade out
+    private static final long SPLASH_MIN_DURATION = 2000; // Minimum 2 seconds display time
+    private static final long SPLASH_MAX_DURATION = 30000; // Maximum 30 seconds (fallback)
+
     private WebView webView;
     private ProgressBar progressBar;
     private ValueCallback<Uri[]> filePathCallback;
@@ -65,10 +80,20 @@ public class MainActivity extends AppCompatActivity {
     private Toast exitToast;
     private boolean keyListenerEnabled = false;
     private boolean exitListenerEnabled = false;
-    private boolean isFromSplash = false;
     private boolean pageLoadComplete = false;
     private Handler progressHandler = new Handler(Looper.getMainLooper());
     private String pendingSaveBase64 = null;
+
+    // Splash screen fields
+    private ConstraintLayout splashContainer;
+    private ImageView splashImage;
+    private LinearLayout defaultSplashContainer;
+    private Handler splashHandler;
+    private long splashStartTime;
+    private boolean splashMinTimeElapsed = false;
+    private boolean splashWebViewLoaded = false;
+    private boolean splashFinishing = false;
+    private boolean splashVisible = true;
 
     private final ActivityResultLauncher<Intent> fileChooserLauncher = registerForActivityResult(
             new ActivityResultContracts.StartActivityForResult(),
@@ -126,22 +151,37 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         
-        // Check if launched from splash screen
-        isFromSplash = getIntent().getBooleanExtra("FROM_SPLASH", false);
+        // Initialize splash handler
+        splashHandler = new Handler(Looper.getMainLooper());
+        splashStartTime = System.currentTimeMillis();
         
-        setThemeColor();
+        // Show splash screen in fullscreen mode (hide system bars)
+        showSplashFullscreen();
+        
         setContentView(R.layout.activity_main);
 
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
 
         initViews();
+        initSplashScreen();
         initWebView();
         
         // Restore state if savedInstanceState is not null
         if (savedInstanceState != null) {
             webView.restoreState(savedInstanceState);
+            // If restoring state, hide splash immediately
+            hideSplashImmediately();
         } else {
             loadUrl();
+            
+            // Set minimum display time callback
+            splashHandler.postDelayed(() -> {
+                splashMinTimeElapsed = true;
+                checkAndHideSplash();
+            }, SPLASH_MIN_DURATION);
+            
+            // Fallback timer - hide splash after max duration
+            splashHandler.postDelayed(this::forceHideSplash, SPLASH_MAX_DURATION);
         }
     }
     
@@ -173,6 +213,167 @@ public class MainActivity extends AppCompatActivity {
     private boolean isColorLight(int color) {
         double darkness = 1 - (0.299 * Color.red(color) + 0.587 * Color.green(color) + 0.114 * Color.blue(color)) / 255;
         return darkness < 0.5;
+    }
+
+    /**
+     * Show splash screen in fullscreen mode, hiding status bar and navigation bar
+     */
+    private void showSplashFullscreen() {
+        Window window = getWindow();
+        WindowCompat.setDecorFitsSystemWindows(window, false);
+        WindowInsetsControllerCompat controller = WindowCompat.getInsetsController(window, window.getDecorView());
+        if (controller != null) {
+            // Hide both status bar and navigation bar
+            controller.hide(WindowInsetsCompat.Type.systemBars());
+            controller.setSystemBarsBehavior(WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+        }
+        
+        // Make status bar and navigation bar transparent
+        window.setStatusBarColor(Color.TRANSPARENT);
+        window.setNavigationBarColor(Color.TRANSPARENT);
+        window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
+        window.addFlags(WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS);
+    }
+
+    /**
+     * Restore normal window mode after splash screen is hidden
+     */
+    private void restoreNormalWindow() {
+        Window window = getWindow();
+        window.clearFlags(WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS);
+        WindowCompat.setDecorFitsSystemWindows(window, true);
+        WindowInsetsControllerCompat controller = WindowCompat.getInsetsController(window, window.getDecorView());
+        if (controller != null) {
+            // Show system bars
+            controller.show(WindowInsetsCompat.Type.systemBars());
+        }
+        
+        // Apply theme color to status bar
+        setThemeColor();
+    }
+
+    /**
+     * Initialize splash screen views and load splash image
+     */
+    private void initSplashScreen() {
+        splashContainer = findViewById(R.id.splashContainer);
+        splashImage = findViewById(R.id.splashImage);
+        defaultSplashContainer = findViewById(R.id.defaultSplashContainer);
+        TextView splashAppName = findViewById(R.id.splashAppName);
+
+        // Set app name dynamically
+        if (splashAppName != null) {
+            splashAppName.setText(BuildConfig.APP_NAME);
+        }
+
+        // Disable all touch events during splash
+        splashContainer.setOnTouchListener((v, event) -> true);
+
+        // Make splash visible
+        splashContainer.setVisibility(View.VISIBLE);
+        splashContainer.setAlpha(1f);
+
+        // Load splash image
+        loadSplashImage();
+    }
+
+    /**
+     * Load splash image from assets or use default app icon
+     */
+    private void loadSplashImage() {
+        try {
+            // Try to load splash image from assets
+            InputStream inputStream = getAssets().open("splash_image.png");
+            Bitmap bitmap = BitmapFactory.decodeStream(inputStream);
+            inputStream.close();
+
+            if (bitmap != null) {
+                // Custom splash image - fill entire screen, no rounded corners
+                splashImage.setImageBitmap(bitmap);
+                splashImage.setScaleType(ImageView.ScaleType.CENTER_CROP);
+                splashImage.setVisibility(View.VISIBLE);
+                defaultSplashContainer.setVisibility(View.GONE);
+            }
+        } catch (Exception e) {
+            // No custom splash image, use default (app icon with white background)
+            splashImage.setVisibility(View.GONE);
+            defaultSplashContainer.setVisibility(View.VISIBLE);
+        }
+    }
+
+    /**
+     * Called when WebView has finished loading
+     */
+    private void onWebViewLoadComplete() {
+        splashWebViewLoaded = true;
+        checkAndHideSplash();
+    }
+
+    /**
+     * Check if both conditions are met (min time elapsed AND webview loaded)
+     * If so, trigger the fade out animation
+     */
+    private void checkAndHideSplash() {
+        if (splashMinTimeElapsed && splashWebViewLoaded && !splashFinishing) {
+            hideSplashWithAnimation();
+        }
+    }
+
+    /**
+     * Force hide splash (used for fallback timer)
+     */
+    private void forceHideSplash() {
+        if (!splashFinishing) {
+            hideSplashWithAnimation();
+        }
+    }
+
+    /**
+     * Hide splash immediately without animation (used when restoring state)
+     */
+    private void hideSplashImmediately() {
+        splashFinishing = true;
+        splashVisible = false;
+        if (splashHandler != null) {
+            splashHandler.removeCallbacksAndMessages(null);
+        }
+        if (splashContainer != null) {
+            splashContainer.setVisibility(View.GONE);
+        }
+        restoreNormalWindow();
+    }
+
+    /**
+     * Hide splash screen with fade out animation
+     */
+    private void hideSplashWithAnimation() {
+        if (splashFinishing || splashContainer == null) return;
+        splashFinishing = true;
+
+        // Remove any pending callbacks
+        if (splashHandler != null) {
+            splashHandler.removeCallbacksAndMessages(null);
+        }
+
+        AlphaAnimation fadeOut = new AlphaAnimation(1.0f, 0.0f);
+        fadeOut.setDuration(SPLASH_FADE_OUT_DURATION);
+        fadeOut.setFillAfter(true);
+        fadeOut.setAnimationListener(new Animation.AnimationListener() {
+            @Override
+            public void onAnimationStart(Animation animation) {}
+
+            @Override
+            public void onAnimationEnd(Animation animation) {
+                splashVisible = false;
+                splashContainer.setVisibility(View.GONE);
+                restoreNormalWindow();
+            }
+
+            @Override
+            public void onAnimationRepeat(Animation animation) {}
+        });
+
+        splashContainer.startAnimation(fadeOut);
     }
 
     private void initViews() {
@@ -271,8 +472,8 @@ public class MainActivity extends AppCompatActivity {
                 pageLoadComplete = true;
                 hideProgressBar();
                 
-                // Notify SplashActivity that page load is complete
-                SplashActivity.onWebViewLoadComplete();
+                // Notify that page load is complete for splash screen
+                onWebViewLoadComplete();
                 
                 // Inject JS Bridge helper
                 injectJsBridgeHelper();
@@ -611,7 +812,21 @@ public class MainActivity extends AppCompatActivity {
     }
 
     @Override
+    public boolean dispatchTouchEvent(MotionEvent ev) {
+        // Block all touch events during splash screen
+        if (splashVisible) {
+            return true;
+        }
+        return super.dispatchTouchEvent(ev);
+    }
+
+    @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
+        // Block back button during splash screen
+        if (splashVisible && keyCode == KeyEvent.KEYCODE_BACK) {
+            return true;
+        }
+        
         // Notify JavaScript about key events if listener is enabled
         if (keyListenerEnabled) {
             notifyKeyEvent(keyCode, "keydown");
@@ -722,6 +937,9 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void showProgressBar() {
+        // Don't show progress bar during splash screen
+        if (splashVisible) return;
+        
         progressHandler.removeCallbacksAndMessages(null);
         if (progressBar.getVisibility() != View.VISIBLE) {
             progressBar.setVisibility(View.VISIBLE);
@@ -753,6 +971,9 @@ public class MainActivity extends AppCompatActivity {
     protected void onDestroy() {
         if (progressHandler != null) {
             progressHandler.removeCallbacksAndMessages(null);
+        }
+        if (splashHandler != null) {
+            splashHandler.removeCallbacksAndMessages(null);
         }
         if (webView != null) {
             webView.destroy();
