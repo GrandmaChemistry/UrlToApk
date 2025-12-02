@@ -5,6 +5,7 @@ plugins {
 def appUrl = project.hasProperty('APP_URL') ? project.property('APP_URL') : 'https://www.example.com'
 def appName = project.hasProperty('APP_NAME') ? project.property('APP_NAME') : 'WebView App'
 def themeColor = project.hasProperty('THEME_COLOR') ? project.property('THEME_COLOR') : '#2196F3'
+def userAgent = project.hasProperty('USER_AGENT') ? project.property('USER_AGENT') : 'WppWebViewApp/1.0'
 
 android {
     namespace 'com.webview.app'
@@ -20,6 +21,7 @@ android {
         buildConfigField "String", "APP_URL", "\"${appUrl}\""
         buildConfigField "String", "APP_NAME", "\"${appName}\""
         buildConfigField "String", "THEME_COLOR", "\"${themeColor}\""
+        buildConfigField "String", "USER_AGENT", "\"${userAgent}\""
 
         resValue "string", "app_name", appName
     }
