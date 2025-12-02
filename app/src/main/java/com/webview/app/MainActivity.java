@@ -249,10 +249,14 @@ public class MainActivity extends AppCompatActivity {
 
     /**
      * Restore normal window mode after splash screen is hidden
+     * Uses edge-to-edge mode (setDecorFitsSystemWindows=false) with manual padding
+     * for precise control over layout and progress bar positioning
      */
     private void restoreNormalWindow() {
         Window window = getWindow();
         window.clearFlags(WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS);
+        // Keep edge-to-edge mode for precise control over layout
+        // WebViewContainer padding is used to push content below status bar
         WindowCompat.setDecorFitsSystemWindows(window, false);
         WindowInsetsControllerCompat controller = WindowCompat.getInsetsController(window, window.getDecorView());
         if (controller != null) {
