@@ -19,9 +19,8 @@ on:
         default: 'com.webview.app'
       theme_color:
         description: '主题色 (例如: #2196F3)'
-        required: false
+        required: true
         type: string
-        default: '#FFFFFF'
       app_icon_url:
         description: '应用图标URL (公开可访问的PNG图片地址，可选)'
         required: false
@@ -77,6 +76,84 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Validate inputs
+        run: |
+          echo "🔍 验证输入参数..."
+          VALIDATION_FAILED=false
+          
+          # Validate URL format
+          APP_URL="${{ github.event.inputs.app_url }}"
+          if [[ ! "$APP_URL" =~ ^https?:// ]]; then
+            echo "❌ 错误: 网站URL格式无效，必须以 http:// 或 https:// 开头"
+            echo "   当前值: $APP_URL"
+            VALIDATION_FAILED=true
+          else
+            echo "✅ 网站URL格式有效: $APP_URL"
+          fi
+          
+          # Validate app name (not empty)
+          APP_NAME="${{ github.event.inputs.app_name }}"
+          if [ -z "$APP_NAME" ]; then
+            echo "❌ 错误: 应用名称不能为空"
+            VALIDATION_FAILED=true
+          else
+            echo "✅ 应用名称有效: $APP_NAME"
+          fi
+          
+          # Validate package name format (must be valid Java package name)
+          PACKAGE_NAME="${{ github.event.inputs.package_name }}"
+          if [[ ! "$PACKAGE_NAME" =~ ^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)+$ ]]; then
+            echo "❌ 错误: 包名格式无效，必须是有效的Java包名格式 (例如: com.example.app)"
+            echo "   当前值: $PACKAGE_NAME"
+            VALIDATION_FAILED=true
+          else
+            echo "✅ 包名格式有效: $PACKAGE_NAME"
+          fi
+          
+          # Validate theme color format (must be valid hex color, 3 or 6 digits)
+          THEME_COLOR="${{ github.event.inputs.theme_color }}"
+          if [[ ! "$THEME_COLOR" =~ ^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$ ]]; then
+            echo "❌ 错误: 主题色格式无效，必须是有效的十六进制颜色代码 (例如: #2196F3 或 #FFF)"
+            echo "   当前值: $THEME_COLOR"
+            VALIDATION_FAILED=true
+          else
+            echo "✅ 主题色格式有效: $THEME_COLOR"
+          fi
+          
+          # Validate app icon URL if provided
+          APP_ICON_URL="${{ github.event.inputs.app_icon_url }}"
+          if [ -n "$APP_ICON_URL" ]; then
+            if [[ ! "$APP_ICON_URL" =~ ^https?:// ]]; then
+              echo "❌ 错误: 应用图标URL格式无效，必须以 http:// 或 https:// 开头"
+              echo "   当前值: $APP_ICON_URL"
+              VALIDATION_FAILED=true
+            else
+              echo "✅ 应用图标URL格式有效: $APP_ICON_URL"
+            fi
+          fi
+          
+          # Validate splash image URL if provided
+          SPLASH_IMAGE_URL="${{ github.event.inputs.splash_image_url }}"
+          if [ -n "$SPLASH_IMAGE_URL" ]; then
+            if [[ ! "$SPLASH_IMAGE_URL" =~ ^https?:// ]]; then
+              echo "❌ 错误: 首屏图片URL格式无效，必须以 http:// 或 https:// 开头"
+              echo "   当前值: $SPLASH_IMAGE_URL"
+              VALIDATION_FAILED=true
+            else
+              echo "✅ 首屏图片URL格式有效: $SPLASH_IMAGE_URL"
+            fi
+          fi
+          
+          # Check if any validation failed
+          if [ "$VALIDATION_FAILED" = true ]; then
+            echo ""
+            echo "❌ 输入验证失败，请检查上述错误并重新提交"
+            exit 1
+          fi
+          
+          echo ""
+          echo "✅ 所有输入参数验证通过"
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
