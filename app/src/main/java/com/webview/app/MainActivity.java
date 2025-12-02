@@ -74,6 +74,7 @@ public class MainActivity extends AppCompatActivity {
     private static final long SPLASH_MAX_DURATION = 30000; // Maximum 30 seconds (fallback)
 
     private WebView webView;
+    private FrameLayout webViewContainer;
     private FrameLayout progressContainer;
     private View progressIndicator;
     private ValueCallback<Uri[]> filePathCallback;
@@ -248,11 +249,15 @@ public class MainActivity extends AppCompatActivity {
 
     /**
      * Restore normal window mode after splash screen is hidden
+     * Uses edge-to-edge mode (setDecorFitsSystemWindows=false) with manual padding
+     * for precise control over layout and progress bar positioning
      */
     private void restoreNormalWindow() {
         Window window = getWindow();
         window.clearFlags(WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS);
-        WindowCompat.setDecorFitsSystemWindows(window, true);
+        // Keep edge-to-edge mode for precise control over layout
+        // WebViewContainer padding is used to push content below status bar
+        WindowCompat.setDecorFitsSystemWindows(window, false);
         WindowInsetsControllerCompat controller = WindowCompat.getInsetsController(window, window.getDecorView());
         if (controller != null) {
             // Show system bars
@@ -261,6 +266,10 @@ public class MainActivity extends AppCompatActivity {
         
         // Apply theme color to status bar
         setThemeColor();
+        
+        // Update webViewContainer padding and progress bar position
+        updateWebViewContainerPadding();
+        updateProgressBarPosition();
     }
 
     /**
@@ -386,14 +395,17 @@ public class MainActivity extends AppCompatActivity {
 
     private void initViews() {
         webView = findViewById(R.id.webView);
+        webViewContainer = findViewById(R.id.webViewContainer);
         progressContainer = findViewById(R.id.progressContainer);
         progressIndicator = findViewById(R.id.progressIndicator);
         
-        // Get status bar height using WindowInsets API
-        ViewCompat.setOnApplyWindowInsetsListener(progressContainer, (v, insets) -> {
+        // Get status bar height using WindowInsets API and apply padding to webViewContainer
+        ViewCompat.setOnApplyWindowInsetsListener(webViewContainer, (v, insets) -> {
             Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.statusBars());
             statusBarHeight = systemBars.top;
-            // Update position after getting the correct insets
+            // Apply padding to webViewContainer based on fullscreen mode
+            updateWebViewContainerPadding();
+            // Update progress bar position
             updateProgressBarPosition();
             return insets;
         });
@@ -405,7 +417,7 @@ public class MainActivity extends AppCompatActivity {
         progressIndicator.setPivotX(0f);
         
         // Request insets to be applied
-        progressContainer.requestApplyInsets();
+        webViewContainer.requestApplyInsets();
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -438,9 +450,9 @@ public class MainActivity extends AppCompatActivity {
         webSettings.setBuiltInZoomControls(true);
         webSettings.setDisplayZoomControls(false);
         
-        // User agent
+        // User agent - append custom user agent to default
         String userAgent = webSettings.getUserAgentString();
-        webSettings.setUserAgentString(userAgent + " WebViewApp/1.0");
+        webSettings.setUserAgentString(userAgent + " " + BuildConfig.USER_AGENT);
         
         // Geolocation
         webSettings.setGeolocationEnabled(true);
@@ -1027,16 +1039,34 @@ public class MainActivity extends AppCompatActivity {
         
         // Check fullscreen state, default to non-fullscreen if jsBridge not yet initialized
         boolean isFullscreen = jsBridge != null && jsBridge.isFullscreenMode();
-        // In fullscreen mode, position at top; in normal mode, position below status bar
-        float translationY = isFullscreen ? 0f : statusBarHeight;
+        // During splash, position at top; after splash and not fullscreen, position below status bar
+        float translationY = (splashVisible || isFullscreen) ? 0f : statusBarHeight;
         progressContainer.setTranslationY(translationY);
     }
     
     /**
-     * Called when fullscreen mode changes to update progress bar position
+     * Update webViewContainer padding based on fullscreen mode and splash visibility
+     * In fullscreen mode or during splash, no padding (webview fills entire screen)
+     * In normal mode after splash, add top padding equal to status bar height
+     */
+    private void updateWebViewContainerPadding() {
+        if (webViewContainer == null) return;
+        
+        // Check fullscreen state, default to non-fullscreen if jsBridge not yet initialized
+        boolean isFullscreen = jsBridge != null && jsBridge.isFullscreenMode();
+        // During splash or in fullscreen mode, no padding; otherwise, add status bar height as padding
+        int topPadding = (splashVisible || isFullscreen) ? 0 : statusBarHeight;
+        webViewContainer.setPadding(0, topPadding, 0, 0);
+    }
+    
+    /**
+     * Called when fullscreen mode changes to update layout positions
      */
     public void onFullscreenModeChanged() {
-        runOnUiThread(this::updateProgressBarPosition);
+        runOnUiThread(() -> {
+            updateProgressBarPosition();
+            updateWebViewContainerPadding();
+        });
     }
 
     @Override

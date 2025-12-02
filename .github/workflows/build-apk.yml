@@ -60,6 +60,11 @@ on:
         required: false
         type: string
         default: 'CN'
+      user_agent:
+        description: '自定义User-Agent (可选，将附加到默认User-Agent后面)'
+        required: false
+        type: string
+        default: 'WppWebViewApp/1.0'
 
 jobs:
   build:
@@ -143,7 +148,8 @@ jobs:
             -PAPP_URL="${{ github.event.inputs.app_url }}" \
             -PAPP_NAME="${{ github.event.inputs.app_name }}" \
             -PPACKAGE_NAME="${{ github.event.inputs.package_name }}" \
-            -PTHEME_COLOR="${{ github.event.inputs.theme_color }}"
+            -PTHEME_COLOR="${{ github.event.inputs.theme_color }}" \
+            -PUSER_AGENT="${{ github.event.inputs.user_agent }}"
 
       - name: Generate signing keystore
         run: |
@@ -216,6 +222,7 @@ jobs:
             - **包名**: ${{ github.event.inputs.package_name }}
             - **URL**: ${{ github.event.inputs.app_url }}
             - **主题色**: ${{ github.event.inputs.theme_color }}
+            - **User-Agent**: ${{ github.event.inputs.user_agent }}
             - **首屏图片**: ${{ github.event.inputs.splash_image_url != '' && '自定义图片' || '应用图标' }}
             - **签名状态**: 正式签名
             
