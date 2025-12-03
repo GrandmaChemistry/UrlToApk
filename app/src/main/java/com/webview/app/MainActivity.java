@@ -275,6 +275,8 @@ public class MainActivity extends AppCompatActivity {
         // Apply theme color to status bar only if requested
         if (setColor) {
             setThemeColor();
+            // Post a delayed task to ensure the color is applied after window state changes
+            new Handler(Looper.getMainLooper()).postDelayed(this::setThemeColor, 50);
         }
         
         // Update webViewContainer padding and progress bar position
@@ -399,6 +401,8 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onAnimationEnd(Animation animation) {
                 splashContainer.setVisibility(View.GONE);
+                // Re-apply theme color after animation completes to ensure it sticks
+                setThemeColor();
             }
 
             @Override
