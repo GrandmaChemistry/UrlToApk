@@ -385,9 +385,9 @@ public class MainActivity extends AppCompatActivity {
         // Set splashVisible to false and restore normal window BEFORE fade-out animation
         // This ensures content shifts to final position before splash disappears,
         // preventing visible content jump when splash ends
-        // Don't set theme color yet - it will be set after animation completes
+        // Apply theme color immediately so status bar has correct color during fade-out
         splashVisible = false;
-        restoreNormalWindow(false);
+        restoreNormalWindow(true);
 
         AlphaAnimation fadeOut = new AlphaAnimation(1.0f, 0.0f);
         fadeOut.setDuration(SPLASH_FADE_OUT_DURATION);
@@ -399,8 +399,6 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onAnimationEnd(Animation animation) {
                 splashContainer.setVisibility(View.GONE);
-                // Apply theme color after splash is fully hidden
-                setThemeColor();
             }
 
             @Override
