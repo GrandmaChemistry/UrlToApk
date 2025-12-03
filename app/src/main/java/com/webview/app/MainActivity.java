@@ -82,6 +82,7 @@ public class MainActivity extends AppCompatActivity {
     private JsBridge jsBridge;
     private LocationManager locationManager;
     private LocationListener locationListener;
+    private Handler locationTimeoutHandler;
     private long lastBackPressTime = 0;
     private Toast exitToast;
     private boolean keyListenerEnabled = false;
@@ -771,14 +772,20 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
 
-        // 3. Define location listener
+        // 3. Define location listener with synchronized cleanup to prevent race conditions
+        final AtomicBoolean locationReceived = new AtomicBoolean(false);
         locationListener = new LocationListener() {
             @Override
             public void onLocationChanged(@NonNull Location location) {
+                // Use atomic flag to ensure only one location is processed
+                if (locationReceived.getAndSet(true)) {
+                    return;
+                }
+                
                 // Got location, send to JS
                 sendLocationToJs(location, "success");
                 
-                // Remove listener after first result to save battery
+                // Remove listener and cancel timeout
                 removeLocationUpdates();
             }
 
@@ -816,9 +823,10 @@ public class MainActivity extends AppCompatActivity {
             }
             
             // 5. Set timeout mechanism to report error if no location received
-            new Handler(Looper.getMainLooper()).postDelayed(() -> {
-                // If listener is still active, no location was received during timeout period
-                if (locationListener != null) {
+            locationTimeoutHandler = new Handler(Looper.getMainLooper());
+            locationTimeoutHandler.postDelayed(() -> {
+                // Use atomic flag to ensure timeout is only processed if no location was received
+                if (!locationReceived.getAndSet(true)) {
                     sendLocationErrorToJs("timeout", "定位超时");
                     removeLocationUpdates();
                 }
@@ -826,16 +834,22 @@ public class MainActivity extends AppCompatActivity {
 
         } catch (Exception e) {
             sendLocationErrorToJs("error", "定位请求失败: " + e.getMessage());
+            // Clean up listener on exception
+            removeLocationUpdates();
         }
     }
 
     /**
-     * Helper method to remove location updates
+     * Helper method to remove location updates and cancel timeout
      */
     private void removeLocationUpdates() {
         if (locationManager != null && locationListener != null) {
             locationManager.removeUpdates(locationListener);
-            locationListener = null; // Mark as finished
+            locationListener = null;
+        }
+        if (locationTimeoutHandler != null) {
+            locationTimeoutHandler.removeCallbacksAndMessages(null);
+            locationTimeoutHandler = null;
         }
     }
 
