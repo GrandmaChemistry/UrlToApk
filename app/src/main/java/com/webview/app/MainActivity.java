@@ -210,14 +210,7 @@ public class MainActivity extends AppCompatActivity {
         try {
             String colorStr = BuildConfig.THEME_COLOR;
             int color = Color.parseColor(colorStr);
-            
-            Window window = getWindow();
-            window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
-            window.setStatusBarColor(color);
-            
-            WindowInsetsControllerCompat windowInsetsController = 
-                    WindowCompat.getInsetsController(window, window.getDecorView());
-            windowInsetsController.setAppearanceLightStatusBars(isColorLight(color));
+            applyStatusBarColor(color);
         } catch (Exception e) {
             e.printStackTrace();
         }
