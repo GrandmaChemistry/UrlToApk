@@ -760,9 +760,17 @@ public class MainActivity extends AppCompatActivity {
         for (String provider : providers) {
             Location l = locationManager.getLastKnownLocation(provider);
             if (l == null) continue;
-            // Simple "better location" logic: choose the most recent one
-            if (bestLastLocation == null || l.getTime() > bestLastLocation.getTime()) {
+            // Select best location based on recency and accuracy
+            if (bestLastLocation == null) {
                 bestLastLocation = l;
+            } else {
+                // Prefer newer location, but also consider accuracy
+                long timeDelta = l.getTime() - bestLastLocation.getTime();
+                float accuracyDelta = l.getAccuracy() - bestLastLocation.getAccuracy();
+                // Use new location if it's significantly newer or notably more accurate
+                if (timeDelta > 30000 || (timeDelta > -60000 && accuracyDelta < -10)) {
+                    bestLastLocation = l;
+                }
             }
         }
 
@@ -802,7 +810,7 @@ public class MainActivity extends AppCompatActivity {
         // 4. Request real-time updates from both GPS and Network providers
         // Uses whichever provider responds first for fastest result
         try {
-            // Try network location (fast indoors, but may not work on some custom ROMs)
+            // Network location: Fast indoors using WiFi/cell towers, but requires network connectivity
             if (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
                 locationManager.requestLocationUpdates(
                     LocationManager.NETWORK_PROVIDER, 
@@ -812,7 +820,7 @@ public class MainActivity extends AppCompatActivity {
                 );
             }
             
-            // Try GPS location (accurate outdoors, but doesn't work indoors)
+            // GPS location: Accurate outdoors using satellites, but doesn't work indoors
             if (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
                 locationManager.requestLocationUpdates(
                     LocationManager.GPS_PROVIDER, 
@@ -928,7 +936,7 @@ public class MainActivity extends AppCompatActivity {
         pendingSaveBase64 = base64;
         // Android 10+ (API 29) uses MediaStore mechanism and doesn't need WRITE permission
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-            // Directly save using MediaStore (ensure JsBridge uses ContentResolver insert internally)
+            // Directly save using MediaStore
             jsBridge.saveToGalleryInternal(base64);
             pendingSaveBase64 = null;
         } else {
