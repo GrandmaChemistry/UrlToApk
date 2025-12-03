@@ -253,6 +253,14 @@ public class MainActivity extends AppCompatActivity {
      * for precise control over layout and progress bar positioning
      */
     private void restoreNormalWindow() {
+        restoreNormalWindow(true);
+    }
+
+    /**
+     * Restore normal window mode after splash screen is hidden
+     * @param setColor Whether to set the theme color immediately
+     */
+    private void restoreNormalWindow(boolean setColor) {
         Window window = getWindow();
         window.clearFlags(WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS);
         // Keep edge-to-edge mode for precise control over layout
@@ -264,8 +272,10 @@ public class MainActivity extends AppCompatActivity {
             controller.show(WindowInsetsCompat.Type.systemBars());
         }
         
-        // Apply theme color to status bar
-        setThemeColor();
+        // Apply theme color to status bar only if requested
+        if (setColor) {
+            setThemeColor();
+        }
         
         // Update webViewContainer padding and progress bar position
         updateWebViewContainerPadding();
@@ -375,8 +385,9 @@ public class MainActivity extends AppCompatActivity {
         // Set splashVisible to false and restore normal window BEFORE fade-out animation
         // This ensures content shifts to final position before splash disappears,
         // preventing visible content jump when splash ends
+        // Don't set theme color yet - it will be set after animation completes
         splashVisible = false;
-        restoreNormalWindow();
+        restoreNormalWindow(false);
 
         AlphaAnimation fadeOut = new AlphaAnimation(1.0f, 0.0f);
         fadeOut.setDuration(SPLASH_FADE_OUT_DURATION);
@@ -388,6 +399,8 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onAnimationEnd(Animation animation) {
                 splashContainer.setVisibility(View.GONE);
+                // Apply theme color after splash is fully hidden
+                setThemeColor();
             }
 
             @Override
