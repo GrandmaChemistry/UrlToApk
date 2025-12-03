@@ -8,6 +8,8 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.location.Location;
+import android.location.LocationListener;
+import android.location.LocationManager;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
@@ -48,25 +50,23 @@ import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
 
-import com.google.android.gms.location.FusedLocationProviderClient;
-import com.google.android.gms.location.LocationCallback;
-import com.google.android.gms.location.LocationRequest;
-import com.google.android.gms.location.LocationResult;
-import com.google.android.gms.location.LocationServices;
-import com.google.android.gms.location.Priority;
-
 import org.json.JSONObject;
 
 import java.io.InputStream;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class MainActivity extends AppCompatActivity {
 
     private static final int LOCATION_PERMISSION_REQUEST = 1001;
     private static final int STORAGE_PERMISSION_REQUEST = 1002;
-    private static final long LOCATION_UPDATE_INTERVAL = 10000; // 10 seconds
-    private static final long LOCATION_MIN_UPDATE_INTERVAL = 5000; // 5 seconds
     private static final long BACK_PRESS_EXIT_INTERVAL = 1000; // 1 second for double tap exit
+    
+    // Location constants
+    private static final long LAST_LOCATION_MAX_AGE_MS = 2 * 60 * 1000; // 2 minutes
+    private static final long LOCATION_UPDATE_INTERVAL_MS = 1000; // 1 second
+    private static final float LOCATION_MIN_DISTANCE_METERS = 0f; // No minimum distance
+    private static final long LOCATION_TIMEOUT_MS = 10000; // 10 seconds
 
     // Splash screen constants
     private static final long SPLASH_FADE_OUT_DURATION = 500; // 500ms fade out
@@ -80,7 +80,9 @@ public class MainActivity extends AppCompatActivity {
     private View progressIndicator;
     private ValueCallback<Uri[]> filePathCallback;
     private JsBridge jsBridge;
-    private FusedLocationProviderClient fusedLocationClient;
+    private LocationManager locationManager;
+    private LocationListener locationListener;
+    private Handler locationTimeoutHandler;
     private long lastBackPressTime = 0;
     private Toast exitToast;
     private boolean keyListenerEnabled = false;
@@ -173,8 +175,6 @@ public class MainActivity extends AppCompatActivity {
         
         setContentView(R.layout.activity_main);
 
-        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
-
         initViews();
         initSplashScreen();
         initWebView();
@@ -243,8 +243,7 @@ public class MainActivity extends AppCompatActivity {
 
     /**
      * Restore normal window mode after splash screen is hidden
-     * Uses edge-to-edge mode (setDecorFitsSystemWindows=false) with manual padding
-     * for precise control over layout and progress bar positioning
+     * Uses standard mode (setDecorFitsSystemWindows=true) for stable status bar color
      */
     private void restoreNormalWindow() {
         restoreNormalWindow(true);
@@ -257,9 +256,9 @@ public class MainActivity extends AppCompatActivity {
     private void restoreNormalWindow(boolean setColor) {
         Window window = getWindow();
         window.clearFlags(WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS);
-        // Keep edge-to-edge mode for precise control over layout
-        // WebViewContainer padding is used to push content below status bar
-        WindowCompat.setDecorFitsSystemWindows(window, false);
+        // Use standard mode (true) for stable status bar color handling
+        // When true, system automatically handles status bar background and content won't draw behind it
+        WindowCompat.setDecorFitsSystemWindows(window, true);
         WindowInsetsControllerCompat controller = WindowCompat.getInsetsController(window, window.getDecorView());
         if (controller != null) {
             // Show system bars
@@ -456,6 +455,8 @@ public class MainActivity extends AppCompatActivity {
     private void applyStatusBarColor(int color) {
         try {
             Window window = getWindow();
+            // Must clear translucent status flag, otherwise color won't be applied on some devices
+            window.clearFlags(WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS);
             window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
             window.setStatusBarColor(color);
             
@@ -614,12 +615,21 @@ public class MainActivity extends AppCompatActivity {
 
             @Override
             public boolean onShowFileChooser(WebView webView, ValueCallback<Uri[]> filePathCallback, FileChooserParams fileChooserParams) {
+                // If there's already a pending callback, cancel it first to prevent WebView deadlock
+                if (MainActivity.this.filePathCallback != null) {
+                    MainActivity.this.filePathCallback.onReceiveValue(null);
+                }
                 MainActivity.this.filePathCallback = filePathCallback;
                 Intent intent = fileChooserParams.createIntent();
                 try {
                     fileChooserLauncher.launch(intent);
                 } catch (Exception e) {
-                    Toast.makeText(MainActivity.this, "无法选择文件", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(MainActivity.this, "无法打开文件选择器", Toast.LENGTH_SHORT).show();
+                    // Critical: must call callback on exception, otherwise WebView input element will be locked
+                    if (MainActivity.this.filePathCallback != null) {
+                        MainActivity.this.filePathCallback.onReceiveValue(null);
+                        MainActivity.this.filePathCallback = null;
+                    }
                     return false;
                 }
                 return true;
@@ -734,94 +744,121 @@ public class MainActivity extends AppCompatActivity {
 
     @SuppressLint("MissingPermission")
     private void getLocation() {
-        // Check if location services are enabled
-        android.location.LocationManager locationManager = (android.location.LocationManager) getSystemService(LOCATION_SERVICE);
-        boolean isGpsEnabled = false;
-        boolean isNetworkEnabled = false;
+        locationManager = (LocationManager) getSystemService(LOCATION_SERVICE);
+
+        // 1. Get all available providers
+        List<String> providers = locationManager.getProviders(true);
         
-        try {
-            isGpsEnabled = locationManager.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER);
-        } catch (Exception ex) {
-            // GPS provider not available
-        }
-        
-        try {
-            isNetworkEnabled = locationManager.isProviderEnabled(android.location.LocationManager.NETWORK_PROVIDER);
-        } catch (Exception ex) {
-            // Network provider not available
-        }
-        
-        if (!isGpsEnabled && !isNetworkEnabled) {
-            sendLocationErrorToJs("error", "位置服务未开启，请在系统设置中开启位置服务");
+        if (providers.isEmpty()) {
+            sendLocationErrorToJs("error", "没有可用的定位服务，请打开GPS");
             return;
         }
-        
-        LocationRequest locationRequest = new LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, LOCATION_UPDATE_INTERVAL)
-                .setWaitForAccurateLocation(false)
-                .setMinUpdateIntervalMillis(LOCATION_MIN_UPDATE_INTERVAL)
-                .setMaxUpdates(1)
-                .build();
 
-        // Create a timeout handler
-        final android.os.Handler timeoutHandler = new android.os.Handler(Looper.getMainLooper());
-        final AtomicBoolean locationReceived = new AtomicBoolean(false);
-        
-        LocationCallback locationCallback = new LocationCallback() {
-            @Override
-            public void onLocationResult(@NonNull LocationResult locationResult) {
-                if (locationReceived.getAndSet(true)) return; // Already handled
-                timeoutHandler.removeCallbacksAndMessages(null);
-                
-                Location location = locationResult.getLastLocation();
-                if (location != null) {
-                    sendLocationToJs(location, "success");
-                } else {
-                    sendLocationErrorToJs("error", "无法获取位置信息");
+        // 2. Try to get last known location for fast response
+        // This provides instant location (though possibly outdated), better than making users wait
+        Location bestLastLocation = null;
+        for (String provider : providers) {
+            Location l = locationManager.getLastKnownLocation(provider);
+            if (l == null) continue;
+            // Select best location based on recency and accuracy
+            if (bestLastLocation == null) {
+                bestLastLocation = l;
+            } else {
+                // Prefer newer location, but also consider accuracy
+                long timeDelta = l.getTime() - bestLastLocation.getTime();
+                float accuracyDelta = l.getAccuracy() - bestLastLocation.getAccuracy();
+                // Use new location if it's significantly newer or notably more accurate
+                if (timeDelta > 30000 || (timeDelta > -60000 && accuracyDelta < -10)) {
+                    bestLastLocation = l;
                 }
-                fusedLocationClient.removeLocationUpdates(this);
             }
-        };
-        
-        // Set timeout for location request (10 seconds)
-        final LocationCallback finalLocationCallback = locationCallback;
-        timeoutHandler.postDelayed(() -> {
-            if (!locationReceived.getAndSet(true)) {
-                fusedLocationClient.removeLocationUpdates(finalLocationCallback);
-                sendLocationErrorToJs("error", "获取位置超时");
-            }
-        }, 10000);
+        }
 
-        // First try to get last known location
-        fusedLocationClient.getLastLocation()
-                .addOnSuccessListener(this, location -> {
-                    if (location != null && !locationReceived.getAndSet(true)) {
-                        timeoutHandler.removeCallbacksAndMessages(null);
-                        sendLocationToJs(location, "success");
-                    } else if (!locationReceived.get()) {
-                        // Request fresh location
-                        try {
-                            fusedLocationClient.requestLocationUpdates(locationRequest, finalLocationCallback, Looper.getMainLooper());
-                        } catch (Exception e) {
-                            if (!locationReceived.getAndSet(true)) {
-                                timeoutHandler.removeCallbacksAndMessages(null);
-                                sendLocationErrorToJs("error", "请求位置更新失败: " + e.getMessage());
-                            }
-                        }
-                    }
-                })
-                .addOnFailureListener(e -> {
-                    if (!locationReceived.get()) {
-                        // Request fresh location on failure
-                        try {
-                            fusedLocationClient.requestLocationUpdates(locationRequest, finalLocationCallback, Looper.getMainLooper());
-                        } catch (Exception ex) {
-                            if (!locationReceived.getAndSet(true)) {
-                                timeoutHandler.removeCallbacksAndMessages(null);
-                                sendLocationErrorToJs("error", "请求位置更新失败: " + ex.getMessage());
-                            }
-                        }
-                    }
-                });
+        // If we have a recent location (within 2 minutes), return it immediately
+        if (bestLastLocation != null && System.currentTimeMillis() - bestLastLocation.getTime() < LAST_LOCATION_MAX_AGE_MS) {
+            sendLocationToJs(bestLastLocation, "success");
+            return;
+        }
+
+        // 3. Define location listener with synchronized cleanup to prevent race conditions
+        final AtomicBoolean locationReceived = new AtomicBoolean(false);
+        locationListener = new LocationListener() {
+            @Override
+            public void onLocationChanged(@NonNull Location location) {
+                // Use atomic flag to ensure only one location is processed
+                if (locationReceived.getAndSet(true)) {
+                    return;
+                }
+                
+                // Got location, send to JS
+                sendLocationToJs(location, "success");
+                
+                // Remove listener and cancel timeout
+                removeLocationUpdates();
+            }
+
+            @Override
+            public void onProviderEnabled(@NonNull String provider) {}
+            
+            @Override
+            public void onProviderDisabled(@NonNull String provider) {}
+            
+            @Override
+            public void onStatusChanged(String provider, int status, Bundle extras) {}
+        };
+
+        // 4. Request real-time updates from both GPS and Network providers
+        // Uses whichever provider responds first for fastest result
+        try {
+            // Network location: Fast indoors using WiFi/cell towers, but requires network connectivity
+            if (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
+                locationManager.requestLocationUpdates(
+                    LocationManager.NETWORK_PROVIDER, 
+                    LOCATION_UPDATE_INTERVAL_MS, 
+                    LOCATION_MIN_DISTANCE_METERS, 
+                    locationListener
+                );
+            }
+            
+            // GPS location: Accurate outdoors using satellites, but doesn't work indoors
+            if (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
+                locationManager.requestLocationUpdates(
+                    LocationManager.GPS_PROVIDER, 
+                    LOCATION_UPDATE_INTERVAL_MS, 
+                    LOCATION_MIN_DISTANCE_METERS, 
+                    locationListener
+                );
+            }
+            
+            // 5. Set timeout mechanism to report error if no location received
+            locationTimeoutHandler = new Handler(Looper.getMainLooper());
+            locationTimeoutHandler.postDelayed(() -> {
+                // Use atomic flag to ensure timeout is only processed if no location was received
+                if (!locationReceived.getAndSet(true)) {
+                    sendLocationErrorToJs("timeout", "定位超时");
+                    removeLocationUpdates();
+                }
+            }, LOCATION_TIMEOUT_MS);
+
+        } catch (Exception e) {
+            sendLocationErrorToJs("error", "定位请求失败: " + e.getMessage());
+            // Clean up listener on exception
+            removeLocationUpdates();
+        }
+    }
+
+    /**
+     * Helper method to remove location updates and cancel timeout
+     */
+    private void removeLocationUpdates() {
+        if (locationManager != null && locationListener != null) {
+            locationManager.removeUpdates(locationListener);
+            locationListener = null;
+        }
+        if (locationTimeoutHandler != null) {
+            locationTimeoutHandler.removeCallbacksAndMessages(null);
+            locationTimeoutHandler = null;
+        }
     }
 
     private void sendLocationToJs(Location location, String status) {
@@ -876,29 +913,38 @@ public class MainActivity extends AppCompatActivity {
                 sendLocationErrorToJs("permission_denied", "位置权限被拒绝");
             }
         } else if (requestCode == STORAGE_PERMISSION_REQUEST) {
-            // Check if storage permission was granted
+            // Android 10+ (API 29) shouldn't reach here as we handle it directly
+            // This is for Android 9 and below
             boolean permissionGranted = grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED;
             
             if (permissionGranted && pendingSaveBase64 != null) {
                 // Permission granted, proceed with saving
                 jsBridge.saveToGalleryInternal(pendingSaveBase64);
-                pendingSaveBase64 = null;
             } else {
                 // Permission denied
                 sendStoragePermissionDenied();
-                pendingSaveBase64 = null;
             }
+            pendingSaveBase64 = null;
         }
     }
     
     /**
      * Request storage permission for saving images
+     * Android 10+ (API 29) uses MediaStore and doesn't need WRITE_EXTERNAL_STORAGE permission
      */
     public void requestStoragePermissionForSave(String base64) {
         pendingSaveBase64 = base64;
-        ActivityCompat.requestPermissions(this,
-                new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE},
-                STORAGE_PERMISSION_REQUEST);
+        // Android 10+ (API 29) uses MediaStore mechanism and doesn't need WRITE permission
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            // Directly save using MediaStore
+            jsBridge.saveToGalleryInternal(base64);
+            pendingSaveBase64 = null;
+        } else {
+            // Android 9 and below need WRITE_EXTERNAL_STORAGE permission
+            ActivityCompat.requestPermissions(this,
+                    new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE},
+                    STORAGE_PERMISSION_REQUEST);
+        }
     }
     
     /**
@@ -1165,6 +1211,8 @@ public class MainActivity extends AppCompatActivity {
         if (splashHandler != null) {
             splashHandler.removeCallbacksAndMessages(null);
         }
+        // Clean up location listener
+        removeLocationUpdates();
         if (webView != null) {
             webView.destroy();
         }
