@@ -210,14 +210,7 @@ public class MainActivity extends AppCompatActivity {
         try {
             String colorStr = BuildConfig.THEME_COLOR;
             int color = Color.parseColor(colorStr);
-            
-            Window window = getWindow();
-            window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
-            window.setStatusBarColor(color);
-            
-            WindowInsetsControllerCompat windowInsetsController = 
-                    WindowCompat.getInsetsController(window, window.getDecorView());
-            windowInsetsController.setAppearanceLightStatusBars(isColorLight(color));
+            applyStatusBarColor(color);
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -408,10 +401,8 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onAnimationEnd(Animation animation) {
                 splashContainer.setVisibility(View.GONE);
-                // Re-apply theme color after animation completes to ensure it sticks
-                if (!isFinishing() && !isDestroyed()) {
-                    setThemeColor();
-                }
+                // Force apply status bar color after splash animation completes
+                forceSetStatusBarColor();
             }
 
             @Override
@@ -419,6 +410,63 @@ public class MainActivity extends AppCompatActivity {
         });
 
         splashContainer.startAnimation(fadeOut);
+    }
+
+    /**
+     * Force set status bar color to the configured theme color after splash screen ends.
+     * This method is called after the splash animation completes to ensure the status bar
+     * displays the correct color that was set during app packaging.
+     */
+    private void forceSetStatusBarColor() {
+        if (isFinishing() || isDestroyed()) return;
+        
+        try {
+            // Get the theme color from build configuration
+            String colorStr = BuildConfig.THEME_COLOR;
+            int color = Color.parseColor(colorStr);
+            
+            // Apply the status bar color immediately
+            applyStatusBarColor(color);
+            
+            // Post additional delayed calls to ensure the color sticks
+            // This handles cases where system may reset the color during window transitions
+            postDelayedStatusBarColorUpdate(color, 100);
+            postDelayedStatusBarColorUpdate(color, 300);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    /**
+     * Post a delayed update of status bar color
+     */
+    private void postDelayedStatusBarColorUpdate(int color, long delayMs) {
+        if (splashHandler != null) {
+            splashHandler.postDelayed(() -> {
+                if (!isFinishing() && !isDestroyed()) {
+                    applyStatusBarColor(color);
+                }
+            }, delayMs);
+        }
+    }
+
+    /**
+     * Apply status bar color with proper window flags and appearance settings
+     */
+    private void applyStatusBarColor(int color) {
+        try {
+            Window window = getWindow();
+            window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
+            window.setStatusBarColor(color);
+            
+            WindowInsetsControllerCompat windowInsetsController = 
+                    WindowCompat.getInsetsController(window, window.getDecorView());
+            if (windowInsetsController != null) {
+                windowInsetsController.setAppearanceLightStatusBars(isColorLight(color));
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
     private void initViews() {
