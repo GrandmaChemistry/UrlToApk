@@ -768,8 +768,6 @@ public class MainActivity extends AppCompatActivity {
         // If we have a recent location (within 2 minutes), return it immediately
         if (bestLastLocation != null && System.currentTimeMillis() - bestLastLocation.getTime() < LAST_LOCATION_MAX_AGE_MS) {
             sendLocationToJs(bestLastLocation, "success");
-            // Return here to avoid requesting fresh location
-            // Comment out the return if you always want fresh location
             return;
         }
 
@@ -794,8 +792,8 @@ public class MainActivity extends AppCompatActivity {
             public void onStatusChanged(String provider, int status, Bundle extras) {}
         };
 
-        // 4. Request real-time updates
-        // This is a basic "hybrid positioning" approach: monitor both GPS and Network
+        // 4. Request real-time updates from both GPS and Network providers
+        // Uses whichever provider responds first for fastest result
         try {
             // Try network location (fast indoors, but may not work on some custom ROMs)
             if (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
@@ -817,11 +815,10 @@ public class MainActivity extends AppCompatActivity {
                 );
             }
             
-            // 5. Set timeout mechanism (10 seconds, report error if no result)
+            // 5. Set timeout mechanism to report error if no location received
             new Handler(Looper.getMainLooper()).postDelayed(() -> {
-                // If listener hasn't been removed (meaning location not received yet)
+                // If listener is still active, no location was received during timeout period
                 if (locationListener != null) {
-                    // If no LastKnownLocation was sent either, it's a real failure
                     sendLocationErrorToJs("timeout", "定位超时");
                     removeLocationUpdates();
                 }
