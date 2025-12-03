@@ -432,35 +432,43 @@ public class MainActivity extends AppCompatActivity {
             String colorStr = BuildConfig.THEME_COLOR;
             int color = Color.parseColor(colorStr);
             
+            // Apply the status bar color immediately
+            applyStatusBarColor(color);
+            
+            // Post additional delayed calls to ensure the color sticks
+            // This handles cases where system may reset the color during window transitions
+            if (splashHandler != null) {
+                splashHandler.postDelayed(() -> {
+                    if (!isFinishing() && !isDestroyed()) {
+                        applyStatusBarColor(color);
+                    }
+                }, 100);
+                
+                splashHandler.postDelayed(() -> {
+                    if (!isFinishing() && !isDestroyed()) {
+                        applyStatusBarColor(color);
+                    }
+                }, 300);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    /**
+     * Apply status bar color with proper window flags and appearance settings
+     */
+    private void applyStatusBarColor(int color) {
+        try {
             Window window = getWindow();
-            // Ensure the window flags are set
             window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
-            // Clear any existing status bar color
-            window.clearFlags(WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS);
-            // Set the status bar color
             window.setStatusBarColor(color);
             
-            // Set the status bar appearance (light or dark icons)
             WindowInsetsControllerCompat windowInsetsController = 
                     WindowCompat.getInsetsController(window, window.getDecorView());
             if (windowInsetsController != null) {
                 windowInsetsController.setAppearanceLightStatusBars(isColorLight(color));
             }
-            
-            // Post additional delayed calls to ensure the color sticks
-            // This handles cases where system may reset the color
-            Handler handler = new Handler(Looper.getMainLooper());
-            handler.postDelayed(() -> {
-                if (!isFinishing() && !isDestroyed()) {
-                    window.setStatusBarColor(color);
-                }
-            }, 100);
-            
-            handler.postDelayed(() -> {
-                if (!isFinishing() && !isDestroyed()) {
-                    window.setStatusBarColor(color);
-                }
-            }, 300);
         } catch (Exception e) {
             e.printStackTrace();
         }
