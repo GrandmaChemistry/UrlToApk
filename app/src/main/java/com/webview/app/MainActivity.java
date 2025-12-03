@@ -278,7 +278,11 @@ public class MainActivity extends AppCompatActivity {
             setThemeColor();
             // Post a delayed task to ensure the color is applied after window state changes
             if (splashHandler != null) {
-                splashHandler.postDelayed(this::setThemeColor, THEME_COLOR_REAPPLY_DELAY);
+                splashHandler.postDelayed(() -> {
+                    if (!isFinishing() && !isDestroyed()) {
+                        setThemeColor();
+                    }
+                }, THEME_COLOR_REAPPLY_DELAY);
             }
         }
         
@@ -405,7 +409,9 @@ public class MainActivity extends AppCompatActivity {
             public void onAnimationEnd(Animation animation) {
                 splashContainer.setVisibility(View.GONE);
                 // Re-apply theme color after animation completes to ensure it sticks
-                setThemeColor();
+                if (!isFinishing() && !isDestroyed()) {
+                    setThemeColor();
+                }
             }
 
             @Override
