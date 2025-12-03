@@ -430,21 +430,23 @@ public class MainActivity extends AppCompatActivity {
             
             // Post additional delayed calls to ensure the color sticks
             // This handles cases where system may reset the color during window transitions
-            if (splashHandler != null) {
-                splashHandler.postDelayed(() -> {
-                    if (!isFinishing() && !isDestroyed()) {
-                        applyStatusBarColor(color);
-                    }
-                }, 100);
-                
-                splashHandler.postDelayed(() -> {
-                    if (!isFinishing() && !isDestroyed()) {
-                        applyStatusBarColor(color);
-                    }
-                }, 300);
-            }
+            postDelayedStatusBarColorUpdate(color, 100);
+            postDelayedStatusBarColorUpdate(color, 300);
         } catch (Exception e) {
             e.printStackTrace();
+        }
+    }
+
+    /**
+     * Post a delayed update of status bar color
+     */
+    private void postDelayedStatusBarColorUpdate(int color, long delayMs) {
+        if (splashHandler != null) {
+            splashHandler.postDelayed(() -> {
+                if (!isFinishing() && !isDestroyed()) {
+                    applyStatusBarColor(color);
+                }
+            }, delayMs);
         }
     }
 
