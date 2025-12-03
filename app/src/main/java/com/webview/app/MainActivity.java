@@ -61,6 +61,12 @@ public class MainActivity extends AppCompatActivity {
     private static final int LOCATION_PERMISSION_REQUEST = 1001;
     private static final int STORAGE_PERMISSION_REQUEST = 1002;
     private static final long BACK_PRESS_EXIT_INTERVAL = 1000; // 1 second for double tap exit
+    
+    // Location constants
+    private static final long LAST_LOCATION_MAX_AGE_MS = 2 * 60 * 1000; // 2 minutes
+    private static final long LOCATION_UPDATE_INTERVAL_MS = 1000; // 1 second
+    private static final float LOCATION_MIN_DISTANCE_METERS = 0f; // No minimum distance
+    private static final long LOCATION_TIMEOUT_MS = 10000; // 10 seconds
 
     // Splash screen constants
     private static final long SPLASH_FADE_OUT_DURATION = 500; // 500ms fade out
@@ -760,7 +766,7 @@ public class MainActivity extends AppCompatActivity {
         }
 
         // If we have a recent location (within 2 minutes), return it immediately
-        if (bestLastLocation != null && System.currentTimeMillis() - bestLastLocation.getTime() < 2 * 60 * 1000) {
+        if (bestLastLocation != null && System.currentTimeMillis() - bestLastLocation.getTime() < LAST_LOCATION_MAX_AGE_MS) {
             sendLocationToJs(bestLastLocation, "success");
             // Return here to avoid requesting fresh location
             // Comment out the return if you always want fresh location
@@ -793,12 +799,22 @@ public class MainActivity extends AppCompatActivity {
         try {
             // Try network location (fast indoors, but may not work on some custom ROMs)
             if (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
-                locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 1000, 0, locationListener);
+                locationManager.requestLocationUpdates(
+                    LocationManager.NETWORK_PROVIDER, 
+                    LOCATION_UPDATE_INTERVAL_MS, 
+                    LOCATION_MIN_DISTANCE_METERS, 
+                    locationListener
+                );
             }
             
             // Try GPS location (accurate outdoors, but doesn't work indoors)
             if (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
-                locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000, 0, locationListener);
+                locationManager.requestLocationUpdates(
+                    LocationManager.GPS_PROVIDER, 
+                    LOCATION_UPDATE_INTERVAL_MS, 
+                    LOCATION_MIN_DISTANCE_METERS, 
+                    locationListener
+                );
             }
             
             // 5. Set timeout mechanism (10 seconds, report error if no result)
@@ -809,7 +825,7 @@ public class MainActivity extends AppCompatActivity {
                     sendLocationErrorToJs("timeout", "定位超时");
                     removeLocationUpdates();
                 }
-            }, 10000); // 10 second timeout
+            }, LOCATION_TIMEOUT_MS);
 
         } catch (Exception e) {
             sendLocationErrorToJs("error", "定位请求失败: " + e.getMessage());
