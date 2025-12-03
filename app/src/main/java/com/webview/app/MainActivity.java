@@ -72,6 +72,7 @@ public class MainActivity extends AppCompatActivity {
     private static final long SPLASH_FADE_OUT_DURATION = 500; // 500ms fade out
     private static final long SPLASH_MIN_DURATION = 2000; // Minimum 2 seconds display time
     private static final long SPLASH_MAX_DURATION = 30000; // Maximum 30 seconds (fallback)
+    private static final long THEME_COLOR_REAPPLY_DELAY = 50; // 50ms delay for theme color reapplication
 
     private WebView webView;
     private FrameLayout webViewContainer;
@@ -276,7 +277,9 @@ public class MainActivity extends AppCompatActivity {
         if (setColor) {
             setThemeColor();
             // Post a delayed task to ensure the color is applied after window state changes
-            new Handler(Looper.getMainLooper()).postDelayed(this::setThemeColor, 50);
+            if (splashHandler != null) {
+                splashHandler.postDelayed(this::setThemeColor, THEME_COLOR_REAPPLY_DELAY);
+            }
         }
         
         // Update webViewContainer padding and progress bar position
