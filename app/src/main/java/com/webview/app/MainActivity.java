@@ -372,6 +372,12 @@ public class MainActivity extends AppCompatActivity {
             splashHandler.removeCallbacksAndMessages(null);
         }
 
+        // Set splashVisible to false and restore normal window BEFORE fade-out animation
+        // This ensures content shifts to final position before splash disappears,
+        // preventing visible content jump when splash ends
+        splashVisible = false;
+        restoreNormalWindow();
+
         AlphaAnimation fadeOut = new AlphaAnimation(1.0f, 0.0f);
         fadeOut.setDuration(SPLASH_FADE_OUT_DURATION);
         fadeOut.setFillAfter(true);
@@ -381,9 +387,7 @@ public class MainActivity extends AppCompatActivity {
 
             @Override
             public void onAnimationEnd(Animation animation) {
-                splashVisible = false;
                 splashContainer.setVisibility(View.GONE);
-                restoreNormalWindow();
             }
 
             @Override
