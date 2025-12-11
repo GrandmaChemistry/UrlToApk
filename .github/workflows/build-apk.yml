@@ -4,66 +4,67 @@ on:
   workflow_dispatch:
     inputs:
       app_url:
-        description: '网站URL (例如: https://www.example.com)'
+        description: "网站URL (例如: https://www.example.com)"
         required: true
         type: string
       app_name:
-        description: '应用名称'
+        description: "应用名称"
         required: true
         type: string
-        default: 'My App'
+        default: "My App"
       package_name:
-        description: '应用包名 (例如: com.example.app)'
+        description: "应用包名 (例如: com.example.app)"
         required: true
         type: string
-        default: 'com.webview.app'
+        default: "com.webview.app"
       theme_color:
-        description: '主题色 (例如: #2196F3)'
+        description: "主题色 (例如: #1989fa)"
         required: true
         type: string
+        default: "#1989fa"
       app_icon_url:
-        description: '应用图标URL (公开可访问的PNG图片地址，可选)'
+        description: "应用图标URL (公开可访问的PNG图片地址，可选)"
         required: false
         type: string
       splash_image_url:
-        description: '首屏图片URL (公开可访问的图片地址，可选，填写则使用该图片作为首屏，不填则使用应用图标)'
+        description: "首屏图片URL (公开可访问的图片地址，可选，填写则使用该图片作为首屏，不填则使用应用图标)"
         required: false
         type: string
       cert_cn:
-        description: '证书姓名 (CN)'
+        description: "证书姓名 (CN)"
         required: false
         type: string
-        default: 'wppApk'
+        default: "wppApk"
       cert_ou:
-        description: '证书组织单位 (OU)'
+        description: "证书组织单位 (OU)"
         required: false
         type: string
-        default: 'hangzhoushiqi'
+        default: "hangzhoushiqi"
       cert_o:
-        description: '证书组织 (O)'
+        description: "证书组织 (O)"
         required: false
         type: string
-        default: 'shiqi'
+        default: "shiqi"
       cert_l:
-        description: '证书城市 (L)'
+        description: "证书城市 (L)"
         required: false
         type: string
-        default: 'zhejiang'
+        default: "zhejiang"
       cert_st:
-        description: '证书省份 (ST)'
+        description: "证书省份 (ST)"
         required: false
         type: string
-        default: 'hangzhou'
+        default: "hangzhou"
       cert_c:
-        description: '证书国家 (C)'
+        description: "证书国家 (C)"
         required: false
         type: string
-        default: 'CN'
+        default: "CN"
       user_agent:
-        description: '自定义User-Agent (可选，将附加到默认User-Agent后面)'
+        description: "自定义User-Agent (可选，将附加到默认User-Agent后面)"
         required: false
         type: string
-        default: 'WppWebViewApp/1.0'
+        default: "WppWebViewApp/1.0"
 
 jobs:
   build:
@@ -72,7 +73,7 @@ jobs:
       contents: write
     env:
       BUILD_TOOLS_VERSION: "34.0.0"
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -81,7 +82,7 @@ jobs:
         run: |
           echo "🔍 验证输入参数..."
           VALIDATION_FAILED=false
-          
+
           # Validate URL format
           APP_URL="${{ github.event.inputs.app_url }}"
           if [[ ! "$APP_URL" =~ ^https?:// ]]; then
@@ -91,7 +92,7 @@ jobs:
           else
             echo "✅ 网站URL格式有效: $APP_URL"
           fi
-          
+
           # Validate app name (not empty)
           APP_NAME="${{ github.event.inputs.app_name }}"
           if [ -z "$APP_NAME" ]; then
@@ -100,7 +101,7 @@ jobs:
           else
             echo "✅ 应用名称有效: $APP_NAME"
           fi
-          
+
           # Validate package name format (must be valid Java package name)
           PACKAGE_NAME="${{ github.event.inputs.package_name }}"
           if [[ ! "$PACKAGE_NAME" =~ ^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)+$ ]]; then
@@ -110,7 +111,7 @@ jobs:
           else
             echo "✅ 包名格式有效: $PACKAGE_NAME"
           fi
-          
+
           # Validate theme color format (must be valid hex color, 3 or 6 digits)
           THEME_COLOR="${{ github.event.inputs.theme_color }}"
           if [[ ! "$THEME_COLOR" =~ ^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$ ]]; then
@@ -120,7 +121,7 @@ jobs:
           else
             echo "✅ 主题色格式有效: $THEME_COLOR"
           fi
-          
+
           # Validate app icon URL if provided
           APP_ICON_URL="${{ github.event.inputs.app_icon_url }}"
           if [ -n "$APP_ICON_URL" ]; then
@@ -132,7 +133,7 @@ jobs:
               echo "✅ 应用图标URL格式有效: $APP_ICON_URL"
             fi
           fi
-          
+
           # Validate splash image URL if provided
           SPLASH_IMAGE_URL="${{ github.event.inputs.splash_image_url }}"
           if [ -n "$SPLASH_IMAGE_URL" ]; then
@@ -144,22 +145,22 @@ jobs:
               echo "✅ 首屏图片URL格式有效: $SPLASH_IMAGE_URL"
             fi
           fi
-          
+
           # Check if any validation failed
           if [ "$VALIDATION_FAILED" = true ]; then
             echo ""
             echo "❌ 输入验证失败，请检查上述错误并重新提交"
             exit 1
           fi
-          
+
           echo ""
           echo "✅ 所有输入参数验证通过"
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
-          java-version: '17'
-          distribution: 'temurin'
+          java-version: "17"
+          distribution: "temurin"
           cache: gradle
 
       - name: Grant execute permission for gradlew
@@ -170,16 +171,16 @@ jobs:
         run: |
           # Download icon from URL with security options
           curl -L --fail --max-time 30 --max-filesize 10485760 -o /tmp/app_icon.png "${{ github.event.inputs.app_icon_url }}"
-          
+
           # Validate PNG file format
           if ! file /tmp/app_icon.png | grep -q "PNG image"; then
             echo "Error: Invalid PNG image format"
             exit 1
           fi
-          
+
           # Install ImageMagick for image resizing
           sudo apt-get update && sudo apt-get install -y imagemagick
-          
+
           # Resize icons for different densities
           convert /tmp/app_icon.png -resize 48x48 app/src/main/res/mipmap-mdpi/ic_launcher.png
           convert /tmp/app_icon.png -resize 48x48 app/src/main/res/mipmap-mdpi/ic_launcher_round.png
@@ -197,10 +198,10 @@ jobs:
         run: |
           # Create assets directory if not exists
           mkdir -p app/src/main/assets
-          
+
           # Download splash image from URL with security options
           curl -L --fail --max-time 60 --max-filesize 20971520 -o /tmp/splash_image_raw "${{ github.event.inputs.splash_image_url }}"
-          
+
           # Validate image file format
           FILE_TYPE=$(file /tmp/splash_image_raw)
           if echo "$FILE_TYPE" | grep -q "PNG image"; then
@@ -216,7 +217,7 @@ jobs:
             echo "Error: Invalid image format. Only PNG and JPEG are supported."
             exit 1
           fi
-          
+
           echo "Splash image processed successfully"
 
       - name: Build Release APK
@@ -250,15 +251,15 @@ jobs:
           if [ -z "$SAFE_NAME" ]; then
             SAFE_NAME="app-release"
           fi
-          
+
           # Find the unsigned APK
           UNSIGNED_APK="app/build/outputs/apk/release/app-release-unsigned.apk"
-          
+
           # Align the APK
           ${ANDROID_SDK_ROOT}/build-tools/${BUILD_TOOLS_VERSION}/zipalign -v -p 4 \
             "$UNSIGNED_APK" \
             "app/build/outputs/apk/release/app-release-aligned.apk"
-          
+
           # Sign the APK with production key
           ${ANDROID_SDK_ROOT}/build-tools/${BUILD_TOOLS_VERSION}/apksigner sign \
             --ks /tmp/release.keystore \
@@ -267,14 +268,14 @@ jobs:
             --key-pass pass:android123 \
             --out "app/build/outputs/apk/release/${SAFE_NAME}.apk" \
             "app/build/outputs/apk/release/app-release-aligned.apk"
-          
+
           # Verify the signature
           ${ANDROID_SDK_ROOT}/build-tools/${BUILD_TOOLS_VERSION}/apksigner verify "app/build/outputs/apk/release/${SAFE_NAME}.apk" \
             || { echo "APK signature verification failed"; exit 1; }
-          
+
           echo "signed=release" >> $GITHUB_OUTPUT
           echo "APK is signed with production key (CN=${{ github.event.inputs.cert_cn }}, OU=${{ github.event.inputs.cert_ou }}, O=${{ github.event.inputs.cert_o }}, L=${{ github.event.inputs.cert_l }}, ST=${{ github.event.inputs.cert_st }}, C=${{ github.event.inputs.cert_c }})"
-          
+
           # Clean up intermediate and temporary files
           rm -f "app/build/outputs/apk/release/app-release-unsigned.apk"
           rm -f "app/build/outputs/apk/release/app-release-aligned.apk"
@@ -302,7 +303,7 @@ jobs:
             - **User-Agent**: ${{ github.event.inputs.user_agent }}
             - **首屏图片**: ${{ github.event.inputs.splash_image_url != '' && '自定义图片' || '应用图标' }}
             - **签名状态**: 正式签名
-            
+
             ## 证书信息
             - CN=${{ github.event.inputs.cert_cn }}
             - OU=${{ github.event.inputs.cert_ou }}
@@ -310,13 +311,13 @@ jobs:
             - L=${{ github.event.inputs.cert_l }}
             - ST=${{ github.event.inputs.cert_st }}
             - C=${{ github.event.inputs.cert_c }}
-            
+
             ## 功能特性
             - WebView 加载指定URL
             - 首屏加载动画
             - 返回键二次确认退出（Toast提示）
             - JavaScript Bridge 原生功能调用
-            
+
             ## 安装说明
             ✅ 此APK已使用正式签名。
           files: app/build/outputs/apk/release/*.apk

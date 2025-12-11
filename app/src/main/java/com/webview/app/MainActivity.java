@@ -61,7 +61,7 @@ public class MainActivity extends AppCompatActivity {
     private static final int LOCATION_PERMISSION_REQUEST = 1001;
     private static final int STORAGE_PERMISSION_REQUEST = 1002;
     private static final long BACK_PRESS_EXIT_INTERVAL = 1000; // 1 second for double tap exit
-    
+
     // Location constants
     private static final long LAST_LOCATION_MAX_AGE_MS = 2 * 60 * 1000; // 2 minutes
     private static final long LOCATION_UPDATE_INTERVAL_MS = 1000; // 1 second
@@ -90,7 +90,7 @@ public class MainActivity extends AppCompatActivity {
     private boolean pageLoadComplete = false;
     private Handler progressHandler = new Handler(Looper.getMainLooper());
     private String pendingSaveBase64 = null;
-    
+
     // Progress bar animation constants
     private static final long PROGRESS_ANIMATION_DURATION = 150; // 150ms for progress updates
     private static final long PROGRESS_FADE_OUT_DURATION = 200; // 200ms fade out
@@ -132,11 +132,11 @@ public class MainActivity extends AppCompatActivity {
             result -> {
                 String scanResult = null;
                 String status = "cancelled";
-                
+
                 if (result.getData() != null) {
                     scanResult = result.getData().getStringExtra(ScannerActivity.EXTRA_SCAN_RESULT);
                 }
-                
+
                 if (result.getResultCode() == ScannerActivity.RESULT_SUCCESS && scanResult != null) {
                     status = "success";
                 } else if (result.getResultCode() == ScannerActivity.RESULT_ERROR) {
@@ -145,10 +145,10 @@ public class MainActivity extends AppCompatActivity {
                         status = "permission_denied";
                     }
                 }
-                
+
                 final String finalStatus = status;
                 final String finalResult = scanResult;
-                
+
                 runOnUiThread(() -> {
                     try {
                         JSONObject response = new JSONObject();
@@ -165,20 +165,20 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        
+
         // Initialize splash handler
         splashHandler = new Handler(Looper.getMainLooper());
         splashStartTime = System.currentTimeMillis();
-        
+
         // Show splash screen in fullscreen mode (hide system bars)
         showSplashFullscreen();
-        
+
         setContentView(R.layout.activity_main);
 
         initViews();
         initSplashScreen();
         initWebView();
-        
+
         // Restore state if savedInstanceState is not null
         if (savedInstanceState != null) {
             webView.restoreState(savedInstanceState);
@@ -186,18 +186,18 @@ public class MainActivity extends AppCompatActivity {
             hideSplashImmediately();
         } else {
             loadUrl();
-            
+
             // Set minimum display time callback
             splashHandler.postDelayed(() -> {
                 splashMinTimeElapsed = true;
                 checkAndHideSplash();
             }, SPLASH_MIN_DURATION);
-            
+
             // Fallback timer - hide splash after max duration
             splashHandler.postDelayed(this::forceHideSplash, SPLASH_MAX_DURATION);
         }
     }
-    
+
     @Override
     protected void onSaveInstanceState(@NonNull Bundle outState) {
         super.onSaveInstanceState(outState);
@@ -233,7 +233,7 @@ public class MainActivity extends AppCompatActivity {
             controller.hide(WindowInsetsCompat.Type.systemBars());
             controller.setSystemBarsBehavior(WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
         }
-        
+
         // Make status bar and navigation bar transparent
         window.setStatusBarColor(Color.TRANSPARENT);
         window.setNavigationBarColor(Color.TRANSPARENT);
@@ -264,7 +264,7 @@ public class MainActivity extends AppCompatActivity {
             // Show system bars
             controller.show(WindowInsetsCompat.Type.systemBars());
         }
-        
+
         // Apply theme color to status bar only if requested
         if (setColor) {
             setThemeColor();
@@ -277,7 +277,7 @@ public class MainActivity extends AppCompatActivity {
                 }, THEME_COLOR_REAPPLY_DELAY);
             }
         }
-        
+
         // Update webViewContainer padding and progress bar position
         updateWebViewContainerPadding();
         updateProgressBarPosition();
@@ -418,15 +418,15 @@ public class MainActivity extends AppCompatActivity {
      */
     private void forceSetStatusBarColor() {
         if (isFinishing() || isDestroyed()) return;
-        
+
         try {
             // Get the theme color from build configuration
             String colorStr = BuildConfig.THEME_COLOR;
             int color = Color.parseColor(colorStr);
-            
+
             // Apply the status bar color immediately
             applyStatusBarColor(color);
-            
+
             // Post additional delayed calls to ensure the color sticks
             // This handles cases where system may reset the color during window transitions
             postDelayedStatusBarColorUpdate(color, 100);
@@ -459,8 +459,8 @@ public class MainActivity extends AppCompatActivity {
             window.clearFlags(WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS);
             window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
             window.setStatusBarColor(color);
-            
-            WindowInsetsControllerCompat windowInsetsController = 
+
+            WindowInsetsControllerCompat windowInsetsController =
                     WindowCompat.getInsetsController(window, window.getDecorView());
             if (windowInsetsController != null) {
                 windowInsetsController.setAppearanceLightStatusBars(isColorLight(color));
@@ -475,7 +475,7 @@ public class MainActivity extends AppCompatActivity {
         webViewContainer = findViewById(R.id.webViewContainer);
         progressContainer = findViewById(R.id.progressContainer);
         progressIndicator = findViewById(R.id.progressIndicator);
-        
+
         // Get status bar height using WindowInsets API and apply padding to webViewContainer
         ViewCompat.setOnApplyWindowInsetsListener(webViewContainer, (v, insets) -> {
             Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.statusBars());
@@ -486,13 +486,13 @@ public class MainActivity extends AppCompatActivity {
             updateProgressBarPosition();
             return insets;
         });
-        
+
         // Initialize progress bar as hidden (alpha=0) and set hardware layer for GPU optimization
         progressContainer.setAlpha(0f);
         progressContainer.setLayerType(View.LAYER_TYPE_HARDWARE, null);
         progressIndicator.setScaleX(0f);
         progressIndicator.setPivotX(0f);
-        
+
         // Request insets to be applied
         webViewContainer.requestApplyInsets();
     }
@@ -500,57 +500,57 @@ public class MainActivity extends AppCompatActivity {
     @SuppressLint("SetJavaScriptEnabled")
     private void initWebView() {
         WebSettings webSettings = webView.getSettings();
-        
+
         // Enable JavaScript
         webSettings.setJavaScriptEnabled(true);
         webSettings.setJavaScriptCanOpenWindowsAutomatically(true);
-        
+
         // DOM storage
         webSettings.setDomStorageEnabled(true);
         webSettings.setDatabaseEnabled(true);
-        
+
         // Cache settings
         webSettings.setCacheMode(WebSettings.LOAD_DEFAULT);
-        
+
         // Media settings
         webSettings.setMediaPlaybackRequiresUserGesture(false);
         webSettings.setAllowFileAccess(true);
         webSettings.setAllowContentAccess(true);
-        
+
         // Mixed content
         webSettings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
-        
+
         // Viewport settings
         webSettings.setUseWideViewPort(true);
         webSettings.setLoadWithOverviewMode(true);
         webSettings.setSupportZoom(true);
         webSettings.setBuiltInZoomControls(true);
         webSettings.setDisplayZoomControls(false);
-        
+
         // User agent - append custom user agent to default
         String userAgent = webSettings.getUserAgentString();
         webSettings.setUserAgentString(userAgent + " " + BuildConfig.USER_AGENT);
-        
+
         // Geolocation
         webSettings.setGeolocationEnabled(true);
-        
+
         // Cookie settings
         CookieManager cookieManager = CookieManager.getInstance();
         cookieManager.setAcceptCookie(true);
         cookieManager.setAcceptThirdPartyCookies(webView, true);
-        
+
         // Initialize JS Bridge
         jsBridge = new JsBridge(this, webView);
         webView.addJavascriptInterface(jsBridge, "AndroidBridge");
-        
+
         // WebViewClient
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 String url = request.getUrl().toString();
-                
+
                 // Handle external links
-                if (url.startsWith("tel:") || url.startsWith("mailto:") || 
+                if (url.startsWith("tel:") || url.startsWith("mailto:") ||
                     url.startsWith("sms:") || url.startsWith("geo:")) {
                     Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
                     try {
@@ -560,7 +560,7 @@ public class MainActivity extends AppCompatActivity {
                     }
                     return true;
                 }
-                
+
                 // Handle market links
                 if (url.startsWith("market:") || url.startsWith("intent:")) {
                     try {
@@ -571,7 +571,7 @@ public class MainActivity extends AppCompatActivity {
                     }
                     return true;
                 }
-                
+
                 return false;
             }
 
@@ -587,26 +587,26 @@ public class MainActivity extends AppCompatActivity {
                 super.onPageFinished(view, url);
                 pageLoadComplete = true;
                 hideProgressBar();
-                
+
                 // Notify that page load is complete for splash screen
                 onWebViewLoadComplete();
-                
+
                 // Inject JS Bridge helper
                 injectJsBridgeHelper();
             }
         });
-        
+
         // WebChromeClient
         webView.setWebChromeClient(new WebChromeClient() {
             @Override
             public void onProgressChanged(WebView view, int newProgress) {
                 updateProgress(newProgress);
-                
+
                 // Ensure progress bar is visible while loading
                 if (newProgress < 100 && !pageLoadComplete) {
                     showProgressBar();
                 }
-                
+
                 // Hide progress bar when complete
                 if (newProgress >= 100) {
                     hideProgressBar();
@@ -748,7 +748,7 @@ public class MainActivity extends AppCompatActivity {
 
         // 1. Get all available providers
         List<String> providers = locationManager.getProviders(true);
-        
+
         if (providers.isEmpty()) {
             sendLocationErrorToJs("error", "没有可用的定位服务，请打开GPS");
             return;
@@ -789,20 +789,20 @@ public class MainActivity extends AppCompatActivity {
                 if (locationReceived.getAndSet(true)) {
                     return;
                 }
-                
+
                 // Got location, send to JS
                 sendLocationToJs(location, "success");
-                
+
                 // Remove listener and cancel timeout
                 removeLocationUpdates();
             }
 
             @Override
             public void onProviderEnabled(@NonNull String provider) {}
-            
+
             @Override
             public void onProviderDisabled(@NonNull String provider) {}
-            
+
             @Override
             public void onStatusChanged(String provider, int status, Bundle extras) {}
         };
@@ -813,23 +813,23 @@ public class MainActivity extends AppCompatActivity {
             // Network location: Fast indoors using WiFi/cell towers, but requires network connectivity
             if (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
                 locationManager.requestLocationUpdates(
-                    LocationManager.NETWORK_PROVIDER, 
-                    LOCATION_UPDATE_INTERVAL_MS, 
-                    LOCATION_MIN_DISTANCE_METERS, 
+                    LocationManager.NETWORK_PROVIDER,
+                    LOCATION_UPDATE_INTERVAL_MS,
+                    LOCATION_MIN_DISTANCE_METERS,
                     locationListener
                 );
             }
-            
+
             // GPS location: Accurate outdoors using satellites, but doesn't work indoors
             if (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
                 locationManager.requestLocationUpdates(
-                    LocationManager.GPS_PROVIDER, 
-                    LOCATION_UPDATE_INTERVAL_MS, 
-                    LOCATION_MIN_DISTANCE_METERS, 
+                    LocationManager.GPS_PROVIDER,
+                    LOCATION_UPDATE_INTERVAL_MS,
+                    LOCATION_MIN_DISTANCE_METERS,
                     locationListener
                 );
             }
-            
+
             // 5. Set timeout mechanism to report error if no location received
             locationTimeoutHandler = new Handler(Looper.getMainLooper());
             locationTimeoutHandler.postDelayed(() -> {
@@ -896,7 +896,7 @@ public class MainActivity extends AppCompatActivity {
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions,
                                            @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        
+
         if (requestCode == LOCATION_PERMISSION_REQUEST) {
             // Check if either location permission was granted
             boolean permissionGranted = false;
@@ -906,7 +906,7 @@ public class MainActivity extends AppCompatActivity {
                     break;
                 }
             }
-            
+
             if (permissionGranted) {
                 getLocation();
             } else {
@@ -916,7 +916,7 @@ public class MainActivity extends AppCompatActivity {
             // Android 10+ (API 29) shouldn't reach here as we handle it directly
             // This is for Android 9 and below
             boolean permissionGranted = grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED;
-            
+
             if (permissionGranted && pendingSaveBase64 != null) {
                 // Permission granted, proceed with saving
                 jsBridge.saveToGalleryInternal(pendingSaveBase64);
@@ -927,7 +927,7 @@ public class MainActivity extends AppCompatActivity {
             pendingSaveBase64 = null;
         }
     }
-    
+
     /**
      * Request storage permission for saving images
      * Android 10+ (API 29) uses MediaStore and doesn't need WRITE_EXTERNAL_STORAGE permission
@@ -946,7 +946,7 @@ public class MainActivity extends AppCompatActivity {
                     STORAGE_PERMISSION_REQUEST);
         }
     }
-    
+
     /**
      * Check if storage permission is granted
      */
@@ -958,7 +958,7 @@ public class MainActivity extends AppCompatActivity {
         return ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE)
                 == PackageManager.PERMISSION_GRANTED;
     }
-    
+
     private void sendStoragePermissionDenied() {
         runOnUiThread(() -> {
             try {
@@ -983,19 +983,19 @@ public class MainActivity extends AppCompatActivity {
         if (splashVisible && keyCode == KeyEvent.KEYCODE_BACK) {
             return true;
         }
-        
+
         // Notify JavaScript about key events if listener is enabled
         if (keyListenerEnabled) {
             notifyKeyEvent(keyCode, "keydown");
         }
-        
+
         if (keyCode == KeyEvent.KEYCODE_BACK) {
             // In fullscreen mode, directly exit the app instead of exiting fullscreen first
             if (jsBridge != null && jsBridge.isFullscreenMode()) {
                 handleBackExit();
                 return true;
             }
-            
+
             if (webView.canGoBack()) {
                 webView.goBack();
                 return true;
@@ -1012,7 +1012,7 @@ public class MainActivity extends AppCompatActivity {
             try {
                 JSONObject response = new JSONObject();
                 response.put("eventType", eventType);
-                
+
                 String keyName;
                 switch (keyCode) {
                     case KeyEvent.KEYCODE_BACK:
@@ -1033,7 +1033,7 @@ public class MainActivity extends AppCompatActivity {
                 }
                 response.put("key", keyName);
                 response.put("keyCode", keyCode);
-                
+
                 executeJsCallback("_keyEventCallback", response.toString());
             } catch (Exception e) {
                 e.printStackTrace();
@@ -1096,7 +1096,7 @@ public class MainActivity extends AppCompatActivity {
     private void showProgressBar() {
         // Don't show progress bar during splash screen
         if (splashVisible) return;
-        
+
         progressHandler.removeCallbacksAndMessages(null);
         if (!progressVisible) {
             progressVisible = true;
@@ -1133,7 +1133,7 @@ public class MainActivity extends AppCompatActivity {
                     .start();
         }, PROGRESS_HIDE_DELAY);
     }
-    
+
     /**
      * Update progress bar scaleX with smooth animation
      * Cancels any previous animation to prevent performance issues with rapid updates
@@ -1143,14 +1143,14 @@ public class MainActivity extends AppCompatActivity {
         if (currentProgressAnimation != null) {
             currentProgressAnimation.cancel();
         }
-        
+
         float scale = progress / 100f;
         currentProgressAnimation = progressIndicator.animate()
                 .scaleX(scale)
                 .setDuration(PROGRESS_ANIMATION_DURATION);
         currentProgressAnimation.start();
     }
-    
+
     /**
      * Update progress bar position based on fullscreen mode
      * In fullscreen mode, position at top (translationY=0)
@@ -1158,14 +1158,14 @@ public class MainActivity extends AppCompatActivity {
      */
     private void updateProgressBarPosition() {
         if (progressContainer == null) return;
-        
+
         // Check fullscreen state, default to non-fullscreen if jsBridge not yet initialized
         boolean isFullscreen = jsBridge != null && jsBridge.isFullscreenMode();
         // During splash, position at top; after splash and not fullscreen, position below status bar
         float translationY = (splashVisible || isFullscreen) ? 0f : statusBarHeight;
         progressContainer.setTranslationY(translationY);
     }
-    
+
     /**
      * Update webViewContainer padding based on fullscreen mode and splash visibility
      * In fullscreen mode or during splash, no padding (webview fills entire screen)
@@ -1173,14 +1173,14 @@ public class MainActivity extends AppCompatActivity {
      */
     private void updateWebViewContainerPadding() {
         if (webViewContainer == null) return;
-        
+
         // Check fullscreen state, default to non-fullscreen if jsBridge not yet initialized
         boolean isFullscreen = jsBridge != null && jsBridge.isFullscreenMode();
         // During splash or in fullscreen mode, no padding; otherwise, add status bar height as padding
         int topPadding = (splashVisible || isFullscreen) ? 0 : statusBarHeight;
         webViewContainer.setPadding(0, topPadding, 0, 0);
     }
-    
+
     /**
      * Called when fullscreen mode changes to update layout positions
      */
