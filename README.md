@@ -1,26 +1,51 @@
 # URL to APK 打包工具
 
-使用 GitHub Action 将任意网站 URL 打包成 Android APK 应用。
+<p align="center">
+  <strong>使用 GitHub Action 将任意网站 URL 一键打包成 Android APK 应用</strong>
+</p>
 
-## 功能特性
+<p align="center">
+  <a href="https://github.com/wangpeng258/UrlToApk/stargazers"><img src="https://img.shields.io/github/stars/wangpeng258/UrlToApk?style=social" alt="GitHub Stars"></a>
+  <a href="https://github.com/wangpeng258/UrlToApk/network/members"><img src="https://img.shields.io/github/forks/wangpeng258/UrlToApk?style=social" alt="GitHub Forks"></a>
+  <a href="https://github.com/wangpeng258/UrlToApk/issues"><img src="https://img.shields.io/github/issues/wangpeng258/UrlToApk" alt="GitHub Issues"></a>
+  <a href="https://github.com/wangpeng258/UrlToApk/blob/main/LICENSE"><img src="https://img.shields.io/github/license/wangpeng258/UrlToApk" alt="License"></a>
+</p>
 
-- ✅ 自定义网站 URL
-- ✅ 自定义应用名称
-- ✅ 自定义应用包名
-- ✅ 自定义主题色
-- ✅ 自定义应用图标
-- ✅ 自定义首屏加载动画（支持自定义图片或使用应用图标）
-- ✅ 自定义签名证书信息
-- ✅ 返回键二次确认退出（Toast 提示方式）
-- ✅ JavaScript Bridge 原生功能调用
-- ✅ 截图与全屏截图功能
-- ✅ 保存图片到相册
-- ✅ 全屏模式切换
-- ✅ 系统设置快捷入口
-- ✅ 按键事件监听
-- ✅ 应用退出事件监听
+<p align="center">
+  <a href="https://github.com/wangpeng258/UrlToApk/actions"><img src="https://img.shields.io/github/actions/workflow/status/wangpeng258/UrlToApk/build.yml?label=Build&logo=github" alt="Build Status"></a>
+  <img src="https://img.shields.io/badge/platform-Android-brightgreen?logo=android" alt="Platform">
+  <img src="https://img.shields.io/badge/language-Java-orange?logo=openjdk" alt="Language">
+  <a href="https://github.com/wangpeng258/UrlToApk/releases"><img src="https://img.shields.io/github/v/release/wangpeng258/UrlToApk?include_prereleases" alt="Latest Release"></a>
+  <img src="https://img.shields.io/github/repo-size/wangpeng258/UrlToApk" alt="Repo Size">
+  <img src="https://img.shields.io/github/last-commit/wangpeng258/UrlToApk" alt="Last Commit">
+</p>
 
-## 使用方法
+<p align="center">
+  <a href="./README.md">🇨🇳 中文</a> | <a href="./README_EN.md">🇺🇸 English</a>
+</p>
+
+---
+
+## 📖 项目简介
+
+UrlToApk 是一个零代码 Android 应用生成工具，只需提供一个网站 URL，即可通过 GitHub Actions 自动构建生成一个原生 Android APK。支持自定义应用名称、图标、主题色、首屏动画等，同时内置丰富的 JavaScript Bridge API，让 Web 页面可以调用原生设备功能。
+
+## ✨ 功能特性
+
+| 分类 | 功能 |
+|------|------|
+| 🎨 自定义配置 | 网站 URL、应用名称、应用包名、主题色、应用图标 |
+| 🖼️ 首屏动画 | 自定义首屏图片或使用应用图标，支持淡入淡出动画 |
+| 🔐 签名证书 | 自定义签名证书信息（CN/OU/O/L/ST/C） |
+| 🔙 返回键 | 二次确认退出（Toast 提示方式） |
+| 🌉 JS Bridge | 30+ 原生 API 调用（设备信息、截图、定位、二维码等） |
+| 📸 截图 | 普通截图与全屏长截图 |
+| 💾 存储 | 保存图片到相册、本地 KV 存储 |
+| 📺 全屏 | 全屏模式切换 |
+| ⚙️ 系统 | 系统设置快捷入口、权限查询 |
+| 🎮 事件 | 按键事件监听、应用退出事件监听 |
+
+## 🚀 使用方法
 
 ### 1. Fork 本仓库
 
@@ -69,7 +94,7 @@
 - 在 Actions 运行结果中下载 Artifacts
 - 在 Releases 页面下载发布的 APK
 
-## 首屏加载动画
+## 🖼️ 首屏加载动画
 
 应用启动时会显示首屏加载动画，提升用户体验：
 
@@ -91,7 +116,7 @@
 - 如果WebView加载未完成，首屏继续显示直到加载完成
 - 显示首屏期间，禁止用户进行任何操作（点击、滚动等）
 
-## JavaScript Bridge API
+## 🌉 JavaScript Bridge API
 
 WebView 中的 JavaScript 可以通过 `NativeBridge` 对象调用原生功能：
 
@@ -677,7 +702,7 @@ NativeBridge.enableBackButton(false); // 禁用
 
 ---
 
-## 完整示例
+## 💡 完整示例
 
 ```html
 <!DOCTYPE html>
@@ -771,7 +796,7 @@ NativeBridge.enableBackButton(false); // 禁用
 </html>
 ```
 
-## 更新日志
+## 📋 更新日志
 
 ### 最新版本修复和改进
 
@@ -817,7 +842,7 @@ NativeBridge.enableBackButton(false); // 禁用
    - `getGrantedPermissions()`: 获取当前应用已授权的权限列表
    - `getClipboardContent()`: 读取剪贴板中的文本内容
 
-## 注意事项
+## ⚠️ 注意事项
 
 1. 首次运行需要下载 Gradle 和依赖，可能需要几分钟时间
 2. 应用图标需要是 PNG 格式，建议尺寸 512x512 像素
@@ -826,7 +851,7 @@ NativeBridge.enableBackButton(false); // 禁用
 5. 某些 API（如位置、相机）需要用户授权权限
 6. Home 键和任务键的监听可能受 Android 系统限制
 
-## 安装说明
+## 📲 安装说明
 
 生成的 APK 已经过签名，可以直接安装到 Android 设备上：
 
@@ -834,6 +859,16 @@ NativeBridge.enableBackButton(false); // 禁用
 2. 在设备上打开 APK 文件进行安装
 3. 如果提示"未知来源"，请在设置中允许安装未知来源应用
 
-## 许可证
+## 🤝 贡献
 
-MIT License
+欢迎提交 Issue 和 Pull Request！如果觉得这个项目有帮助，请给一个 ⭐ Star 支持一下。
+
+## 📄 许可证
+
+本项目采用 [MIT License](LICENSE) 开源协议。
+
+---
+
+<p align="center">
+  如果这个项目对您有帮助，请点个 ⭐ Star 支持一下！
+</p>
