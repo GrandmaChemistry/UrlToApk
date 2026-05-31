@@ -543,7 +543,7 @@ NativeBridge.takeFullScreenshot(function(result) {
   if (result.status === 'success') {
     // 长图截取成功
     NativeBridge.saveToGallery(result.data, function(saveResult) {
-      NativeBridge.showToast(saveResult.success ? '已保存' : '保存失败');
+      NativeBridge.showToast(saveResult.success ? '已保存' : saveResult.message);
     });
   }
 });
