@@ -38,7 +38,7 @@ UrlToApk 是一个零代码 Android 应用生成工具，只需提供一个网�
 | 🖼️ 首屏动画 | 自定义首屏图片或使用应用图标，支持淡入淡出动画 |
 | 🔐 签名证书 | 自定义签名证书信息（CN/OU/O/L/ST/C） |
 | 🔙 返回键 | 二次确认退出（Toast 提示方式） |
-| 🌉 JS Bridge | 30+ 原生 API 调用（设备信息、截图、定位、二维码等） |
+| 🌉 JS Bridge | 40+ 原生 API 调用（设备信息、截图、定位、二维码、全屏、事件监听等） |
 | 📸 截图 | 普通截图与全屏长截图 |
 | 💾 存储 | 保存图片到相册、本地 KV 存储 |
 | 📺 全屏 | 全屏模式切换 |
@@ -118,46 +118,121 @@ UrlToApk 是一个零代码 Android 应用生成工具，只需提供一个网�
 
 ## 🌉 JavaScript Bridge API
 
-WebView 中的 JavaScript 可以通过 `NativeBridge` 对象调用原生功能：
+本项目内置了完整的 JavaScript Bridge，允许 Web 页面通过 `NativeBridge` 全局对象调用 Android 原生能力。Bridge 在 WebView 加载完成后自动注入，无需额外配置。
+
+### 初始化
 
 ```javascript
-// 等待 NativeBridge 初始化完成
+// 方式一：监听 NativeBridgeReady 事件
 document.addEventListener('NativeBridgeReady', function() {
-  console.log('NativeBridge is ready!');
+  // NativeBridge 已就绪，可以安全调用所有 API
 });
 
-// 或者使用回调函数
+// 方式二：使用回调函数
 window.onNativeBridgeReady = function() {
-  console.log('NativeBridge is ready!');
+  // NativeBridge 已就绪
 };
 ```
 
-### 可用的 API
+> **重要**: 所有 `NativeBridge` API 必须在 `NativeBridgeReady` 事件触发后调用，否则可能抛出 `undefined` 错误。
 
 ---
 
-### UI 相关
+### API 总览
 
-#### showToast(message)
-显示 Toast 消息提示。
+| 分类 | 方法 | 说明 |
+|------|------|------|
+| **UI 交互** | `showToast(message)` | 显示 Toast 消息 |
+| | `showLoading(message)` | 显示加载对话框 |
+| | `hideLoading()` | 隐藏加载对话框 |
+| | `showAlert(title, message, callback)` | 显示提示对话框 |
+| | `showConfirm(title, message, callback)` | 显示确认对话框 |
+| | `setStatusBarColor(color)` | 设置状态栏颜色 |
+| | `setTitle(title)` | 设置应用标题 |
+| **设备信息** | `getDeviceInfo()` | 获取基本设备信息 |
+| | `getExtendedDeviceInfo()` | 获取扩展设备信息 |
+| | `getNetworkType()` | 获取网络连接类型 |
+| | `isWifiConnected()` | 判断 WiFi 是否连接 |
+| | `getBatteryLevel()` | 获取电池电量 |
+| | `getAppVersion()` | 获取应用版本号 |
+| **硬件能力** | `vibrate(duration)` | 触发设备震动 |
+| | `playSound(soundName)` | 播放系统提示音 |
+| | `getCurrentLocation(callback)` | 获取地理位置 |
+| | `scanQRCode(callback)` | 扫描二维码 |
+| **截图与存储** | `takeScreenshot(callback)` | 截取当前可见区域 |
+| | `takeFullScreenshot(callback)` | 截取完整页面长图 |
+| | `saveToGallery(base64, callback)` | 保存图片到相册 |
+| **本地存储** | `setLocalStorage(key, value)` | 写入键值对 |
+| | `getLocalStorage(key)` | 读取键值对 |
+| | `removeLocalStorage(key)` | 删除指定键 |
+| | `clearLocalStorage()` | 清空所有数据 |
+| **导航控制** | `goBack()` | 返回上一页 |
+| | `reload()` | 刷新当前页面 |
+| | `clearCache()` | 清除 WebView 缓存 |
+| | `exitApp()` | 退出应用 |
+| | `setScreenOrientation(orientation)` | 设置屏幕方向 |
+| | `enableBackButton(enabled)` | 启用/禁用返回键 |
+| | `isBackButtonEnabled()` | 查询返回键状态 |
+| **全屏模式** | `enterFullscreen()` | 进入全屏模式 |
+| | `exitFullscreen()` | 退出全屏模式 |
+| | `isFullscreenMode()` | 查询全屏状态 |
+| **分享与通讯** | `share(title, text, url)` | 调用系统分享 |
+| | `copyToClipboard(text)` | 复制到剪贴板 |
+| | `getClipboardContent()` | 读取剪贴板内容 |
+| | `openUrl(url)` | 外部浏览器打开链接 |
+| | `makeCall(phone)` | 拨打电话 |
+| | `sendSMS(phone, message)` | 发送短信 |
+| **系统设置** | `openSystemSettings()` | 打开系统设置 |
+| | `openAppSettings()` | 打开应用设置 |
+| | `getGrantedPermissions()` | 获取已授权权限列表 |
+| **事件监听** | `registerKeyListener(callback)` | 注册按键监听 |
+| | `unregisterKeyListener()` | 取消按键监听 |
+| | `registerExitListener(callback)` | 注册退出事件监听 |
+| | `unregisterExitListener()` | 取消退出事件监听 |
+| **联系人** | `getContacts()` | 获取联系人（需权限） |
+
+---
+
+### UI 交互
+
+#### `showToast(message)`
+
+显示原生 Toast 短消息提示。
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `message` | `String` | 要显示的消息文本 |
 
 ```javascript
-NativeBridge.showToast('Hello World');
+NativeBridge.showToast('操作成功');
 ```
 
-#### showLoading(message) / hideLoading()
-显示/隐藏加载对话框。
+#### `showLoading(message)` / `hideLoading()`
+
+显示/隐藏模态加载对话框。加载对话框显示期间，用户无法与页面交互。
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `message` | `String` | 加载提示文本，为空时显示"加载中..." |
 
 ```javascript
-// 显示加载框
-NativeBridge.showLoading('加载中...');
+NativeBridge.showLoading('正在提交...');
 
-// 隐藏加载框
-NativeBridge.hideLoading();
+// 异步操作完成后隐藏
+setTimeout(function() {
+  NativeBridge.hideLoading();
+}, 3000);
 ```
 
-#### showAlert(title, message, callback)
-显示提示对话框。
+#### `showAlert(title, message, callback)`
+
+显示原生 Alert 对话框，用户点击"确定"后触发回调。
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `title` | `String` | 对话框标题 |
+| `message` | `String` | 对话框内容 |
+| `callback` | `Function` | 点击确定后的回调函数 |
 
 ```javascript
 NativeBridge.showAlert('提示', '操作成功！', function() {
@@ -165,8 +240,15 @@ NativeBridge.showAlert('提示', '操作成功！', function() {
 });
 ```
 
-#### showConfirm(title, message, callback)
-显示确认对话框。
+#### `showConfirm(title, message, callback)`
+
+显示原生确认对话框（确定/取消），回调参数为布尔值。
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `title` | `String` | 对话框标题 |
+| `message` | `String` | 对话框内容 |
+| `callback` | `Function` | 回调函数，参数: `result` (Boolean) |
 
 ```javascript
 NativeBridge.showConfirm('确认', '确定要删除吗？', function(result) {
@@ -178,476 +260,364 @@ NativeBridge.showConfirm('确认', '确定要删除吗？', function(result) {
 });
 ```
 
-#### setStatusBarColor(color)
-设置状态栏颜色。
+#### `setStatusBarColor(color)`
+
+设置 Android 状态栏颜色，自动适配状态栏文字颜色（深色/浅色）。
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `color` | `String` | 十六进制颜色值，如 `#FF5722` |
 
 ```javascript
-NativeBridge.setStatusBarColor('#FF5722');
+NativeBridge.setStatusBarColor('#1976D2');
 ```
+
+#### `setTitle(title)`
+
+设置应用标题栏文本（仅在启用 ActionBar 时生效）。
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `title` | `String` | 标题文本 |
+
+```javascript
+NativeBridge.setTitle('我的应用');
+```
+
+> **注意**: 本应用默认使用 NoActionBar 主题，此 API 在默认配置下无可见效果。
 
 ---
 
-### 设备功能
+### 设备信息
 
-#### getDeviceInfo()
-获取基本设备信息。
+#### `getDeviceInfo()`
+
+获取基本设备信息，返回已解析的 JSON 对象。
+
+| 返回值字段 | 类型 | 说明 |
+|------------|------|------|
+| `brand` | `String` | 设备品牌 |
+| `model` | `String` | 设备型号 |
+| `device` | `String` | 设备名称 |
+| `sdkVersion` | `Number` | Android SDK 版本号 |
+| `release` | `String` | Android 系统版本 |
+| `manufacturer` | `String` | 制造商 |
+| `product` | `String` | 产品名称 |
 
 ```javascript
-var deviceInfo = NativeBridge.getDeviceInfo();
-console.log('品牌:', deviceInfo.brand);
-console.log('型号:', deviceInfo.model);
-console.log('设备:', deviceInfo.device);
-console.log('SDK版本:', deviceInfo.sdkVersion);
-console.log('系统版本:', deviceInfo.release);
-console.log('制造商:', deviceInfo.manufacturer);
-console.log('产品:', deviceInfo.product);
+var info = NativeBridge.getDeviceInfo();
+console.log(info.brand + ' ' + info.model); // 例: "Xiaomi Redmi Note 12"
 ```
 
-#### getExtendedDeviceInfo()
-获取扩展设备信息，包含更多详细信息。
+#### `getExtendedDeviceInfo()`
+
+获取扩展设备信息，包含屏幕、电池、网络、应用等完整信息。
+
+| 返回值字段 | 类型 | 说明 |
+|------------|------|------|
+| `brand` | `String` | 设备品牌 |
+| `model` | `String` | 设备型号 |
+| `device` | `String` | 设备名称 |
+| `manufacturer` | `String` | 制造商 |
+| `product` | `String` | 产品名称 |
+| `sdkVersion` | `Number` | Android SDK 版本号 |
+| `release` | `String` | Android 系统版本 |
+| `screen` | `Object\|null` | 屏幕信息 `{width, height, density, densityDpi}` |
+| `battery` | `Object\|null` | 电池信息 `{level, isCharging}` |
+| `networkType` | `String\|null` | 网络类型 |
+| `appVersion` | `String\|null` | 应用版本名 |
+| `appVersionCode` | `Number\|null` | 应用版本号 |
+| `deviceId` | `String\|null` | 设备唯一标识符 (Android ID) |
+| `packageName` | `String\|null` | 应用包名 |
 
 ```javascript
 var info = NativeBridge.getExtendedDeviceInfo();
 
-// 基本设备信息
-console.log('品牌:', info.brand);
-console.log('型号:', info.model);
-console.log('设备:', info.device);
-console.log('制造商:', info.manufacturer);
-console.log('产品:', info.product);
-
-// 系统版本信息
-console.log('SDK版本:', info.sdkVersion);
-console.log('系统版本:', info.release);
-
 // 屏幕分辨率
 if (info.screen) {
-  console.log('屏幕宽度:', info.screen.width);
-  console.log('屏幕高度:', info.screen.height);
-  console.log('屏幕密度:', info.screen.density);
-  console.log('DPI:', info.screen.densityDpi);
+  console.log('屏幕:', info.screen.width + 'x' + info.screen.height);
+  console.log('密度:', info.screen.densityDpi + 'dpi');
 }
 
 // 电池状态
 if (info.battery) {
-  console.log('电池电量:', info.battery.level + '%');
-  console.log('是否充电:', info.battery.isCharging);
+  console.log('电量:', info.battery.level + '%');
+  console.log('充电中:', info.battery.isCharging);
 }
 
-// 网络状态
-console.log('网络类型:', info.networkType); // wifi/cellular/none
-
-// 应用信息
-console.log('应用版本:', info.appVersion);
-console.log('应用版本号:', info.appVersionCode);
-console.log('包名:', info.packageName);
-
-// 设备唯一标识符
+// 设备标识
 console.log('设备ID:', info.deviceId);
+console.log('包名:', info.packageName);
 ```
 
-> **注意**: 某些信息获取失败时，对应字段值为 `null`，不会影响其他信息的获取。
+> **注意**: 部分字段获取失败时返回 `null`，不影响其他字段。
 
-#### getNetworkType()
-获取当前网络类型。
+#### `getNetworkType()`
+
+获取当前网络连接类型。
+
+| 返回值 | 说明 |
+|--------|------|
+| `"wifi"` | WiFi 连接 |
+| `"cellular"` | 移动数据 |
+| `"ethernet"` | 以太网 |
+| `"none"` | 无网络 |
 
 ```javascript
-var networkType = NativeBridge.getNetworkType();
-// 返回值: 'wifi' | 'cellular' | 'ethernet' | 'none'
-console.log('网络类型:', networkType);
+var type = NativeBridge.getNetworkType();
+if (type === 'none') {
+  NativeBridge.showToast('当前无网络连接');
+}
 ```
 
-#### isWifiConnected()
-判断是否连接 WiFi。
+#### `isWifiConnected()`
+
+判断当前是否通过 WiFi 连接网络。
+
+| 返回值 | 类型 | 说明 |
+|--------|------|------|
+| — | `Boolean` | `true` 表示 WiFi 已连接 |
 
 ```javascript
-var isWifi = NativeBridge.isWifiConnected();
-console.log('WiFi已连接:', isWifi);
+if (NativeBridge.isWifiConnected()) {
+  // 可以执行大文件下载等操作
+}
 ```
 
-#### getBatteryLevel()
-获取电池电量百分比。
+#### `getBatteryLevel()`
+
+获取当前电池电量百分比。
+
+| 返回值 | 类型 | 说明 |
+|--------|------|------|
+| — | `Number` | 0-100 的电量百分比，获取失败返回 -1 |
 
 ```javascript
-var battery = NativeBridge.getBatteryLevel();
-console.log('电池电量:', battery + '%');
+var level = NativeBridge.getBatteryLevel();
+if (level < 20) {
+  NativeBridge.showToast('电量不足，请及时充电');
+}
 ```
 
-#### getAppVersion()
-获取应用版本号。
+#### `getAppVersion()`
+
+获取当前应用的版本名称（`versionName`）。
+
+| 返回值 | 类型 | 说明 |
+|--------|------|------|
+| — | `String` | 版本号字符串，如 `"1.0.0"`，获取失败返回 `"1.0"` |
 
 ```javascript
 var version = NativeBridge.getAppVersion();
-console.log('应用版本:', version);
+console.log('当前版本:', version);
 ```
 
-#### vibrate(duration)
+---
+
+### 硬件能力
+
+#### `vibrate(duration)`
+
 触发设备震动。
 
-```javascript
-NativeBridge.vibrate(200); // 震动200毫秒
-```
-
-#### playSound(soundName)
-播放系统提示音。
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `duration` | `Number` | 震动时长（毫秒） |
 
 ```javascript
-NativeBridge.playSound('beep');    // 普通提示音
-NativeBridge.playSound('success'); // 成功提示音
-NativeBridge.playSound('error');   // 错误提示音
+NativeBridge.vibrate(200); // 震动 200ms
 ```
 
-#### getCurrentLocation(callback)
-获取当前地理位置。
+#### `playSound(soundName)`
+
+播放系统预置提示音。
+
+| 参数 | 类型 | 可选值 |
+|------|------|--------|
+| `soundName` | `String` | `"beep"` \| `"success"` \| `"error"` |
+
+```javascript
+NativeBridge.playSound('success'); // 播放成功提示音
+```
+
+#### `getCurrentLocation(callback)`
+
+请求获取当前地理位置坐标。首次调用会请求位置权限。超时时间为 10 秒。
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `callback` | `Function` | 回调函数，参数为结果对象 |
+
+**回调结果对象**:
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `status` | `String` | `"success"` \| `"permission_denied"` \| `"error"` |
+| `latitude` | `Number` | 纬度（成功时） |
+| `longitude` | `Number` | 经度（成功时） |
+| `accuracy` | `Number` | 精度（米） |
+| `altitude` | `Number` | 海拔（米） |
+| `speed` | `Number` | 速度（m/s） |
+| `timestamp` | `Number` | 时间戳 |
+| `message` | `String` | 错误信息（失败时） |
 
 ```javascript
 NativeBridge.getCurrentLocation(function(result) {
   if (result.status === 'success') {
-    console.log('纬度:', result.latitude);
-    console.log('经度:', result.longitude);
-    console.log('精度:', result.accuracy);
-    console.log('海拔:', result.altitude);
-    console.log('速度:', result.speed);
-    console.log('时间戳:', result.timestamp);
+    console.log('坐标:', result.latitude, result.longitude);
   } else if (result.status === 'permission_denied') {
-    console.log('用户拒绝了位置权限');
+    NativeBridge.showToast('请授予位置权限');
   } else {
-    console.log('获取位置失败:', result.message);
+    console.log('定位失败:', result.message);
   }
 });
 ```
 
-#### scanQRCode(callback)
-扫描二维码。
+#### `scanQRCode(callback)`
+
+启动相机扫描二维码/条形码。首次调用会请求相机权限。
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `callback` | `Function` | 回调函数，参数为结果对象 |
+
+**回调结果对象**:
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `status` | `String` | `"success"` \| `"cancelled"` \| `"permission_denied"` \| `"error"` |
+| `result` | `String` | 扫描到的内容（成功时） |
 
 ```javascript
 NativeBridge.scanQRCode(function(result) {
   if (result.status === 'success') {
     console.log('扫描结果:', result.result);
   } else if (result.status === 'cancelled') {
-    console.log('用户取消了扫描');
-  } else if (result.status === 'permission_denied') {
-    console.log('用户拒绝了相机权限');
-  } else {
-    console.log('扫描失败');
+    console.log('用户取消');
   }
 });
 ```
 
 ---
 
-### 截图功能
+### 截图与存储
 
-#### takeScreenshot(callback)
-截取当前屏幕并返回 Base64 编码的图片。
+#### `takeScreenshot(callback)`
+
+截取 WebView 当前可见区域，返回 PNG 格式的 Base64 编码图片。
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `callback` | `Function` | 回调函数，参数为结果对象 |
+
+**回调结果对象**:
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `status` | `String` | `"success"` \| `"error"` |
+| `data` | `String` | Base64 编码的 PNG 图片数据（成功时） |
+| `message` | `String` | 错误信息（失败时） |
 
 ```javascript
 NativeBridge.takeScreenshot(function(result) {
   if (result.status === 'success') {
-    // result.data 是 PNG 格式的 Base64 编码字符串
-    console.log('截图成功');
-    
-    // 显示截图
-    var img = document.createElement('img');
+    var img = new Image();
     img.src = 'data:image/png;base64,' + result.data;
     document.body.appendChild(img);
-    
-    // 或者保存到相册
-    NativeBridge.saveToGallery(result.data, function(saveResult) {
-      console.log('保存结果:', saveResult.message);
-    });
-  } else {
-    console.log('截图失败:', result.message);
   }
 });
 ```
 
-#### takeFullScreenshot(callback)
-截取整个 WebView 内容（包括不可见的滚动区域）。
+#### `takeFullScreenshot(callback)`
+
+截取 WebView 完整页面内容（包含滚动区域），最大高度 10000px，返回 PNG 格式 Base64 数据。
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `callback` | `Function` | 回调函数，参数为结果对象 |
+
+**回调结果对象**: 同 `takeScreenshot`。
 
 ```javascript
 NativeBridge.takeFullScreenshot(function(result) {
   if (result.status === 'success') {
-    // result.data 是完整页面的 PNG 格式 Base64 编码字符串
-    console.log('全屏截图成功');
-    
-    // 使用截图
-    var img = new Image();
-    img.src = 'data:image/png;base64,' + result.data;
-    img.onload = function() {
-      console.log('截图尺寸:', img.width, 'x', img.height);
-    };
-  } else {
-    console.log('全屏截图失败:', result.message);
+    // 长图截取成功
+    NativeBridge.saveToGallery(result.data, function(saveResult) {
+      NativeBridge.showToast(saveResult.success ? '已保存' : '保存失败');
+    });
   }
 });
 ```
 
-#### saveToGallery(base64, callback)
-将 Base64 编码的图片保存到相册。调用时会自动获取存储权限。
+#### `saveToGallery(base64, callback)`
+
+将 Base64 编码的图片保存到设备相册。Android 9 及以下会自动请求存储权限。
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `base64` | `String` | Base64 图片数据，支持 `data:image/xxx;base64,` 前缀格式 |
+| `callback` | `Function` | 回调函数，参数为结果对象 |
+
+**回调结果对象**:
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `success` | `Boolean` | 是否保存成功 |
+| `message` | `String` | 错误信息（失败时） |
 
 ```javascript
-// 直接保存 Base64 图片
-var base64Image = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
-NativeBridge.saveToGallery(base64Image, function(result) {
+NativeBridge.saveToGallery('data:image/png;base64,iVBORw0KGgo...', function(result) {
   if (result.success) {
-    console.log('保存成功');
+    NativeBridge.showToast('图片已保存到相册');
   } else {
-    console.log('保存失败:', result.message);
-    // 可能的错误消息:
-    // - "用户拒绝存储权限"
-    // - "保存图片失败"
+    NativeBridge.showToast(result.message); // "用户拒绝存储权限" 或 "保存图片失败"
   }
 });
-
-// 支持带有 data:image/xxx;base64, 前缀
-var dataUrl = 'data:image/png;base64,iVBORw0KGgo...';
-NativeBridge.saveToGallery(dataUrl, function(result) {
-  console.log(result.success ? '成功' : result.message);
-});
-```
-
----
-
-### 系统设置
-
-#### openSystemSettings()
-打开系统设置页面。
-
-```javascript
-NativeBridge.openSystemSettings();
-```
-
-#### openAppSettings()
-打开当前应用的设置页面。
-
-```javascript
-NativeBridge.openAppSettings();
-```
-
-#### getGrantedPermissions()
-获取当前应用已获取的权限列表。返回危险权限和普通权限两个分类。
-
-```javascript
-var result = NativeBridge.getGrantedPermissions();
-if (result.status === 'success') {
-  // 危险权限（需要用户授权）
-  console.log('危险权限:', result.dangerousPermissions);
-  // 可能包括: CAMERA, ACCESS_FINE_LOCATION, ACCESS_COARSE_LOCATION, 
-  // WRITE_EXTERNAL_STORAGE, READ_EXTERNAL_STORAGE, READ_MEDIA_IMAGES (Android 13+)
-  
-  // 普通权限（自动授权）
-  console.log('普通权限:', result.normalPermissions);
-  // 包括: VIBRATE, INTERNET, ACCESS_NETWORK_STATE
-  
-  // 所有权限（向后兼容）
-  console.log('所有权限:', result.permissions);
-  
-  // 检查是否有某个权限
-  if (result.dangerousPermissions.includes('CAMERA')) {
-    console.log('相机权限已授权');
-  }
-} else {
-  console.log('获取权限列表失败:', result.message);
-}
-```
-
----
-
-### 全屏模式
-
-#### enterFullscreen()
-进入全屏模式（隐藏状态栏和导航栏）。
-
-```javascript
-NativeBridge.enterFullscreen();
-```
-
-#### exitFullscreen()
-退出全屏模式（显示状态栏和导航栏）。
-
-```javascript
-NativeBridge.exitFullscreen();
-```
-
-#### isFullscreenMode()
-检查当前是否处于全屏模式。
-
-```javascript
-var isFullscreen = NativeBridge.isFullscreenMode();
-console.log('全屏模式:', isFullscreen);
-```
-
-**完整示例：**
-```javascript
-// 切换全屏状态
-function toggleFullscreen() {
-  if (NativeBridge.isFullscreenMode()) {
-    NativeBridge.exitFullscreen();
-    console.log('已退出全屏');
-  } else {
-    NativeBridge.enterFullscreen();
-    console.log('已进入全屏');
-  }
-}
-```
-
----
-
-### 按键事件监听
-
-#### registerKeyListener(callback)
-注册按键事件监听器，监听 Back、Home、任务键等按键。
-
-```javascript
-NativeBridge.registerKeyListener(function(event) {
-  console.log('按键事件类型:', event.eventType); // 'keydown'
-  console.log('按键名称:', event.key);           // 'back', 'home', 'task', 'menu', 'key_xxx'
-  console.log('按键代码:', event.keyCode);       // 数字键码
-  
-  // 处理不同按键
-  switch (event.key) {
-    case 'back':
-      console.log('用户按下了返回键');
-      break;
-    case 'home':
-      console.log('用户按下了 Home 键');
-      break;
-    case 'task':
-      console.log('用户按下了任务键');
-      break;
-    case 'menu':
-      console.log('用户按下了菜单键');
-      break;
-    default:
-      console.log('用户按下了其他按键:', event.key);
-  }
-});
-```
-
-#### unregisterKeyListener()
-取消按键事件监听。
-
-```javascript
-NativeBridge.unregisterKeyListener();
-```
-
-> **注意**: Home 键和任务键的监听可能受系统限制，不保证所有设备都能监听到。
-
----
-
-### 应用退出事件监听
-
-#### registerExitListener(callback)
-注册应用退出事件监听器，在应用即将退出时触发回调。
-
-```javascript
-NativeBridge.registerExitListener(function(event) {
-  console.log('应用即将退出');
-  console.log('退出事件:', event.event);       // 'exit'
-  console.log('时间戳:', event.timestamp);     // 退出时的时间戳
-  
-  // 在这里可以执行清理工作
-  // 例如：保存用户数据、发送统计数据等
-  saveUserData();
-  sendAnalytics('app_exit');
-});
-```
-
-#### unregisterExitListener()
-取消应用退出事件监听。
-
-```javascript
-NativeBridge.unregisterExitListener();
-```
-
----
-
-### 分享与通讯
-
-#### share(title, text, url)
-调用系统分享功能。
-
-```javascript
-NativeBridge.share('分享标题', '分享内容描述', 'https://example.com');
-```
-
-#### copyToClipboard(text)
-复制文本到剪贴板。
-
-```javascript
-NativeBridge.copyToClipboard('要复制的文本');
-```
-
-#### getClipboardContent()
-读取剪贴板中的文本内容。如果剪贴板为空或不包含文本，则返回空字符串。
-
-```javascript
-var clipboardText = NativeBridge.getClipboardContent();
-if (clipboardText) {
-  console.log('剪贴板内容:', clipboardText);
-} else {
-  console.log('剪贴板为空');
-}
-```
-
-> **注意**: 此 API 只读取文本内容，不处理图片等其他格式的内容。
-
-#### openUrl(url)
-在外部浏览器中打开链接。
-
-```javascript
-NativeBridge.openUrl('https://www.google.com');
-```
-
-#### makeCall(phone)
-拨打电话。
-
-```javascript
-NativeBridge.makeCall('10086');
-```
-
-#### sendSMS(phone, message)
-发送短信。
-
-```javascript
-NativeBridge.sendSMS('10086', '短信内容');
 ```
 
 ---
 
 ### 本地存储
 
-#### setLocalStorage(key, value)
-存储数据到本地。
+基于 Android `SharedPreferences` 的持久化键值存储，数据在应用卸载前一直保留，不受 WebView 缓存清除影响。
 
-```javascript
-NativeBridge.setLocalStorage('username', 'john_doe');
-NativeBridge.setLocalStorage('settings', JSON.stringify({theme: 'dark', lang: 'zh'}));
-```
+#### `setLocalStorage(key, value)`
 
-#### getLocalStorage(key)
-读取本地存储的数据。
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `key` | `String` | 存储键名 |
+| `value` | `String` | 存储值（仅支持字符串，复杂对象请 JSON 序列化） |
 
-```javascript
-var username = NativeBridge.getLocalStorage('username');
-console.log('用户名:', username);
+#### `getLocalStorage(key)`
 
-var settings = JSON.parse(NativeBridge.getLocalStorage('settings') || '{}');
-console.log('设置:', settings);
-```
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `key` | `String` | 存储键名 |
 
-#### removeLocalStorage(key)
-删除指定的本地存储数据。
+| 返回值 | 类型 | 说明 |
+|--------|------|------|
+| — | `String\|null` | 对应的值，不存在时返回 `null` |
 
-```javascript
-NativeBridge.removeLocalStorage('username');
-```
+#### `removeLocalStorage(key)`
 
-#### clearLocalStorage()
+删除指定键的存储数据。
+
+#### `clearLocalStorage()`
+
 清空所有本地存储数据。
 
 ```javascript
+// 写入
+NativeBridge.setLocalStorage('user', JSON.stringify({ name: 'John', age: 30 }));
+
+// 读取
+var user = JSON.parse(NativeBridge.getLocalStorage('user') || '{}');
+console.log(user.name); // "John"
+
+// 删除
+NativeBridge.removeLocalStorage('user');
+
+// 清空全部
 NativeBridge.clearLocalStorage();
 ```
 
@@ -655,50 +625,305 @@ NativeBridge.clearLocalStorage();
 
 ### 导航控制
 
-#### goBack()
-返回上一页。
+#### `goBack()`
+
+WebView 历史后退。如果没有可后退的历史记录，则不执行任何操作。
 
 ```javascript
 NativeBridge.goBack();
 ```
 
-#### reload()
-刷新当前页面。
+#### `reload()`
+
+刷新当前 WebView 页面。
 
 ```javascript
 NativeBridge.reload();
 ```
 
-#### clearCache()
-清除 WebView 缓存。
+#### `clearCache()`
+
+清除 WebView 缓存和浏览历史。
 
 ```javascript
 NativeBridge.clearCache();
 ```
 
-#### exitApp()
-退出应用（会弹出确认对话框）。
+#### `exitApp()`
+
+退出应用，会弹出原生确认对话框。
 
 ```javascript
 NativeBridge.exitApp();
 ```
 
-#### setScreenOrientation(orientation)
-设置屏幕方向。
+#### `setScreenOrientation(orientation)`
+
+设置屏幕方向锁定。
+
+| 参数 | 类型 | 可选值 |
+|------|------|--------|
+| `orientation` | `String` | `"portrait"` \| `"landscape"` \| `"auto"` |
 
 ```javascript
-NativeBridge.setScreenOrientation('portrait');  // 竖屏
-NativeBridge.setScreenOrientation('landscape'); // 横屏
-NativeBridge.setScreenOrientation('auto');      // 自动
+NativeBridge.setScreenOrientation('landscape'); // 强制横屏
+NativeBridge.setScreenOrientation('auto');      // 跟随传感器
 ```
 
-#### enableBackButton(enabled)
-启用/禁用返回按钮处理。
+#### `enableBackButton(enabled)` / `isBackButtonEnabled()`
+
+控制返回键是否由 WebView 处理。
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `enabled` | `Boolean` | `true` 启用, `false` 禁用 |
 
 ```javascript
-NativeBridge.enableBackButton(true);  // 启用
-NativeBridge.enableBackButton(false); // 禁用
+// 禁用返回键（例如在支付流程中）
+NativeBridge.enableBackButton(false);
+
+// 查询当前状态
+var enabled = NativeBridge.isBackButtonEnabled();
+console.log('返回键状态:', enabled);
+
+// 恢复
+NativeBridge.enableBackButton(true);
 ```
+
+---
+
+### 全屏模式
+
+#### `enterFullscreen()`
+
+进入沉浸式全屏模式，隐藏系统状态栏和导航栏。支持手势滑动临时呼出系统栏。
+
+```javascript
+NativeBridge.enterFullscreen();
+```
+
+#### `exitFullscreen()`
+
+退出全屏模式，恢复显示系统状态栏和导航栏。
+
+```javascript
+NativeBridge.exitFullscreen();
+```
+
+#### `isFullscreenMode()`
+
+| 返回值 | 类型 | 说明 |
+|--------|------|------|
+| — | `Boolean` | `true` 表示当前处于全屏模式 |
+
+```javascript
+// 切换全屏状态
+function toggleFullscreen() {
+  if (NativeBridge.isFullscreenMode()) {
+    NativeBridge.exitFullscreen();
+  } else {
+    NativeBridge.enterFullscreen();
+  }
+}
+```
+
+---
+
+### 分享与通讯
+
+#### `share(title, text, url)`
+
+调用系统分享面板。
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `title` | `String` | 分享标题 |
+| `text` | `String` | 分享文本内容 |
+| `url` | `String` | 分享链接（可选，会附加在文本末尾） |
+
+```javascript
+NativeBridge.share('推荐应用', '这个应用很好用！', 'https://example.com');
+```
+
+#### `copyToClipboard(text)`
+
+复制文本到系统剪贴板，成功后显示 Toast 提示。
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `text` | `String` | 要复制的文本 |
+
+```javascript
+NativeBridge.copyToClipboard('邀请码: ABC123');
+```
+
+#### `getClipboardContent()`
+
+读取系统剪贴板中的文本内容。
+
+| 返回值 | 类型 | 说明 |
+|--------|------|------|
+| — | `String` | 剪贴板文本内容，为空时返回空字符串 `""` |
+
+```javascript
+var text = NativeBridge.getClipboardContent();
+if (text) {
+  console.log('剪贴板:', text);
+}
+```
+
+> **注意**: 仅支持读取纯文本内容。
+
+#### `openUrl(url)`
+
+在外部浏览器中打开指定 URL。
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `url` | `String` | 完整的 URL 地址 |
+
+```javascript
+NativeBridge.openUrl('https://www.google.com');
+```
+
+#### `makeCall(phone)`
+
+调起系统拨号界面（不会直接拨出）。
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `phone` | `String` | 电话号码 |
+
+```javascript
+NativeBridge.makeCall('10086');
+```
+
+#### `sendSMS(phone, message)`
+
+调起系统短信界面，预填收件人和内容。
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `phone` | `String` | 收件人号码 |
+| `message` | `String` | 短信内容 |
+
+```javascript
+NativeBridge.sendSMS('10086', '查询余额');
+```
+
+---
+
+### 系统设置
+
+#### `openSystemSettings()`
+
+跳转到 Android 系统设置主页面。
+
+```javascript
+NativeBridge.openSystemSettings();
+```
+
+#### `openAppSettings()`
+
+跳转到当前应用的系统设置详情页（可用于引导用户手动开启权限）。
+
+```javascript
+NativeBridge.openAppSettings();
+```
+
+#### `getGrantedPermissions()`
+
+获取当前应用已授权的权限列表，区分危险权限和普通权限。
+
+| 返回值字段 | 类型 | 说明 |
+|------------|------|------|
+| `status` | `String` | `"success"` \| `"error"` |
+| `dangerousPermissions` | `Array<String>` | 已授权的危险权限列表 |
+| `normalPermissions` | `Array<String>` | 已授权的普通权限列表 |
+| `permissions` | `Array<String>` | 全部已授权权限（向后兼容） |
+| `message` | `String` | 错误信息（失败时） |
+
+**可能的危险权限**: `CAMERA`, `ACCESS_FINE_LOCATION`, `ACCESS_COARSE_LOCATION`, `WRITE_EXTERNAL_STORAGE`, `READ_EXTERNAL_STORAGE`, `READ_MEDIA_IMAGES` (Android 13+)
+
+**可能的普通权限**: `VIBRATE`, `INTERNET`, `ACCESS_NETWORK_STATE`
+
+```javascript
+var result = NativeBridge.getGrantedPermissions();
+if (result.status === 'success') {
+  if (result.dangerousPermissions.includes('CAMERA')) {
+    console.log('相机权限已授权');
+  }
+}
+```
+
+---
+
+### 事件监听
+
+#### `registerKeyListener(callback)` / `unregisterKeyListener()`
+
+注册/取消物理按键事件监听。
+
+**回调事件对象**:
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `eventType` | `String` | 固定为 `"keydown"` |
+| `key` | `String` | 按键名: `"back"` \| `"home"` \| `"task"` \| `"menu"` \| `"key_xxx"` |
+| `keyCode` | `Number` | Android 键码值 |
+
+```javascript
+NativeBridge.registerKeyListener(function(event) {
+  switch (event.key) {
+    case 'back':
+      console.log('返回键');
+      break;
+    case 'menu':
+      console.log('菜单键');
+      break;
+  }
+});
+
+// 不再需要时取消监听
+NativeBridge.unregisterKeyListener();
+```
+
+> **注意**: Home 键和任务键的监听受 Android 系统限制，部分设备可能无法捕获。
+
+#### `registerExitListener(callback)` / `unregisterExitListener()`
+
+注册/取消应用退出事件监听，在应用即将销毁时触发。
+
+**回调事件对象**:
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `event` | `String` | 固定为 `"exit"` |
+| `timestamp` | `Number` | 退出时的时间戳 |
+
+```javascript
+NativeBridge.registerExitListener(function(event) {
+  // 执行清理操作
+  NativeBridge.setLocalStorage('lastExit', String(event.timestamp));
+});
+
+// 取消监听
+NativeBridge.unregisterExitListener();
+```
+
+---
+
+### 联系人
+
+#### `getContacts()`
+
+获取设备联系人列表（需要联系人权限）。
+
+```javascript
+NativeBridge.getContacts();
+```
+
+> **注意**: 此 API 当前为预留接口，调用后会提示需要申请权限。
 
 ---
 
