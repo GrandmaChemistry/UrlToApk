@@ -76,7 +76,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Validate inputs
         run: |
@@ -282,7 +282,7 @@ jobs:
           rm -f "/tmp/release.keystore"
 
       - name: Upload APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: ${{ github.event.inputs.app_name }}-apk
           path: app/build/outputs/apk/release/*.apk
